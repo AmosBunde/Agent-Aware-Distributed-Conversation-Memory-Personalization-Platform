@@ -1,342 +1,224 @@
-# 🧠 Agent-Aware Distributed Conversation Memory & Personalization Platform
+# 🧠 Conversation Memory & Personalization Platform
 
-A production-style backend system that **stores, retrieves, personalizes, and serves long-term conversational context** for millions of AI users with low latency and strong reliability guarantees.
+A distributed backend that **stores, retrieves, personalizes, and serves long-term conversational context** for AI agents — with semantic search, per-user profiles, and reliability built in from the first commit.
+
+Five FastAPI microservices behind one gateway, backed by PostgreSQL + pgvector and Redis. Every service ships with unit tests; the golden path is covered by black-box e2e tests that run in CI against the real stack.
 
 ---
 
-## What It Does
+## Quickstart — one command, zero API keys
 
-- **Conversation Memory** — Stores full conversation history with structured metadata extraction (skills, preferences, entities)
-- **Semantic Retrieval** — Fast vector-similarity search over millions of past conversations via pgvector
-- **Personalization Pipelines** — Converts raw interaction history into user embeddings and ranked context bundles
-- **Session Memory** — Short-term Redis-backed session state with TTL management
-- **Long-term Knowledge Storage** — PostgreSQL + DynamoDB durable storage with tiered retrieval
-- **Relevance Scoring** — Re-ranks retrieved memories by recency, relevance, and user preference signal
-- **Reliability** — Caching tiers, fallback retrieval, per-user rate limiting, circuit breakers, failure isolation
-- **APIs** — Conversation history retrieval, memory mutation, real-time personalization signals
+```bash
+git clone https://github.com/AmosBunde/Agent-Aware-Distributed-Conversation-Memory-Personalization-Platform.git
+cd Agent-Aware-Distributed-Conversation-Memory-Personalization-Platform
+./scripts/quickstart.sh
+```
+
+That's the whole setup. The script checks prerequisites (Docker + Compose v2), writes a working `.env`, builds the five services, waits until everything reports healthy, and prints:
+
+```
+▸ All services healthy.
+▸ Web console:  http://localhost:8000
+▸ API docs:     http://localhost:8000/docs
+```
+
+No OpenAI account is needed — the default embedding backend is a deterministic local encoder, so semantic search works offline out of the box. To upgrade retrieval quality later, set `EMBEDDING_BACKEND=openai` and `OPENAI_API_KEY` in `.env`.
+
+Prefer Make? `make dev` does the same bring-up; `make down` stops everything.
+
+## The web console
+
+Open **http://localhost:8000** and you get a dark, terminal-styled console served by the gateway itself (single HTML file, no build step, no CDN):
+
+- **Store memories** and send explicit preference signals from the left rail
+- **Context search** shows each retrieved memory with its **similarity / recency / final-score breakdown** as meter bars — the ranking decomposition made visible
+- **Context bundle** merges the user profile with top-K memories, exactly what an AI agent would consume before its next turn
+- A **live health strip** for all five services and a **request log** with per-call latency at the bottom
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      AI Agent / ChatGPT Backend                      │
-│              (calls this platform to get/store context)              │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                │ gRPC / REST
-┌───────────────────────────────▼─────────────────────────────────────┐
-│                         API Gateway (FastAPI)                        │
-│          Auth · Rate Limiting · Circuit Breaker · OTEL               │
-└──┬─────────────────┬──────────────────┬──────────────────┬──────────┘
-   │                 │                  │                  │
-┌──▼──────────┐ ┌────▼────────┐ ┌──────▼──────┐ ┌────────▼────────┐
-│   Memory    │ │Personalizatn│ │  Embedding  │ │    Session      │
-│   Service   │ │  Service    │ │  Service    │ │    Service      │
-│             │ │             │ │             │ │                 │
-│ - Store     │ │ - User emb. │ │ - Encode    │ │ - Active ctx    │
-│ - Retrieve  │ │ - Context   │ │ - Similarity│ │ - TTL mgmt      │
-│ - Mutate    │ │   bundles   │ │ - pgvector  │ │ - Fast recall   │
-│ - Rank      │ │ - Pref sig. │ │             │ │                 │
-└──┬──────────┘ └────┬────────┘ └──────┬──────┘ └────────┬────────┘
-   │                 │                  │                  │
-   └─────────────────┴──────────────────┴──────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────────┐
-│                    Apache Kafka / Cloud Pub/Sub                       │
-│  memory.stored  memory.retrieved  embedding.requested  session.ended  │
-└──┬──────────────────────────────────────────────────────────────────┘
-   │
-┌──▼──────────────────────────────────────────────────────────────────┐
-│               Persistence & Vector Storage Layer                     │
-│  Redis (hot cache, sessions)  PostgreSQL+pgvector (memories+vectors) │
-│  DynamoDB (event log, scale)  S3/Blob/GCS (raw conversation archive)│
-└──┬──────────────────────────────────────────────────────────────────┘
-   │
-┌──▼──────────────────────────────────────────────────────────────────┐
-│         Observability: Prometheus · Grafana · Jaeger (OTEL)          │
-└─────────────────────────────────────────────────────────────────────┘
+                      ┌──────────────────────────────┐
+                      │   AI Agent / your backend    │
+                      └──────────────┬───────────────┘
+                                     │ REST
+                      ┌──────────────▼───────────────┐
+                      │      API Gateway :8000       │
+                      │  web console · rate limiting │
+                      │  circuit breakers · health   │
+                      └──┬────────┬────────┬─────┬───┘
+                         │        │        │     │
+     ┌───────────────────▼──┐ ┌───▼──────┐ ┌▼─────────────┐ ┌▼───────────┐
+     │   Memory :8001       │ │ Session  │ │Personalizatn │ │ Embedding  │
+     │ store/search/rank    │ │  :8004   │ │    :8002     │ │   :8003    │
+     │ pgvector cosine +    │ │ Redis    │ │ profiles ·   │ │ local hash │
+     │ recency re-ranking   │ │ TTL      │ │ signals ·    │ │ or OpenAI  │
+     │                      │ │ state    │ │ bundles      │ │ vectors    │
+     └──────────┬───────────┘ └────┬─────┘ └──────┬───────┘ └────────────┘
+                │                  │              │
+     ┌──────────▼──────────┐ ┌─────▼────┐ ┌───────▼───────┐
+     │ PostgreSQL 16       │ │ Redis 7  │ │ PostgreSQL    │
+     │ + pgvector (IVFFlat)│ │ (TTL)    │ │ (signals)     │
+     └─────────────────────┘ └──────────┘ └───────────────┘
 ```
+
+**Request flow for a typical AI turn:**
+1. Agent calls `GET /api/v1/personalization/{user}/context-bundle?query=...`
+2. Personalization builds the profile (history aggregation + explicit signals) and asks the memory service for top-K relevant memories
+3. Memory service embeds the query, runs pgvector cosine search, re-ranks by `0.75·similarity + 0.25·recency`
+4. Agent gets one bundle: who this user is + what's relevant right now
+
+**Reliability at the gateway:** per-user token-bucket rate limiting (429 + `Retry-After`), and a circuit breaker per upstream — after N consecutive failures the circuit opens and fails fast (503) instead of piling requests onto a struggling service; a half-open probe closes it again when the upstream recovers. One service melting down never takes the others with it.
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Core Services | Python 3.11, FastAPI, gRPC |
-| Event Streaming | Apache Kafka (AWS MSK / Azure Event Hubs / GCP Pub/Sub) |
-| Hot Cache | Redis 7 (Cluster mode) |
-| Durable Storage | PostgreSQL 15 + pgvector extension |
-| Document Store | DynamoDB (AWS) / CosmosDB (Azure) / Firestore (GCP) |
-| Vector Search | pgvector (self-hosted) or Pinecone (managed) |
-| Embeddings | OpenAI `text-embedding-3-small` / sentence-transformers |
-| Orchestration | Kubernetes + Helm |
-| IaC | Terraform 1.7+ |
-| CI/CD | GitHub Actions |
-| Observability | Prometheus + Grafana + OpenTelemetry + Jaeger |
-| Object Storage | S3 / Azure Blob / GCS |
-
----
-
-## Project Structure
+## Project structure
 
 ```
-conv-memory-platform/
 ├── services/
-│   ├── memory-service/          # Store, retrieve, rank conversation memories
-│   ├── personalization-service/ # User embeddings, preference signals, context bundles
-│   ├── embedding-service/       # Encode text → vectors, pgvector similarity search
-│   ├── session-service/         # Short-term Redis-backed session state
-│   └── gateway/                 # API Gateway (auth, rate limiting, circuit breaker)
-├── infrastructure/
-│   └── terraform/
-│       ├── modules/
-│       │   ├── networking/      # VPC / VNet / GCP VPC
-│       │   ├── eks/             # AWS EKS cluster
-│       │   ├── gke/             # GCP GKE cluster
-│       │   ├── aks/             # Azure AKS cluster
-│       │   ├── kafka/           # MSK / Event Hubs / Pub/Sub
-│       │   ├── vectordb/        # PostgreSQL + pgvector
-│       │   ├── cache/           # Redis / ElastiCache / Memorystore
-│       │   └── storage/         # S3 / Blob / GCS
-│       └── environments/
-│           ├── aws/
-│           ├── azure/
-│           └── gcp/
-├── helm/                        # Kubernetes Helm chart
+│   ├── gateway/          # Public entrypoint: routing, rate limit, circuit breaker, web console
+│   ├── memory/           # pgvector storage, semantic search, recency-aware ranking
+│   ├── personalization/  # Profiles, preference signals, context bundles
+│   ├── session/          # Redis-backed short-term state with TTL
+│   └── embedding/        # Text → 384-dim vectors (local zero-key backend or OpenAI)
+│       └── <service>/
+│           ├── app/          # config.py, main.py (app factory), domain modules
+│           ├── tests/        # unit tests, no infrastructure needed
+│           ├── Dockerfile
+│           └── requirements.txt
+├── shared/               # convmem-shared: settings, wire schemas, HTTP client, health router
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-├── scripts/                     # DB init, seed, migration scripts
-├── .github/workflows/           # CI/CD pipeline
+│   ├── integration/      # cross-service tests against the running stack
+│   └── e2e/              # black-box golden path through the gateway only
+├── scripts/              # quickstart.sh, initdb.sql (pgvector schema + indexes)
+├── .github/workflows/    # CI: lint → unit → compose e2e smoke
 ├── docker-compose.yml
 └── Makefile
 ```
 
+Every service follows the same pattern: a `create_app()` factory with injected dependencies (repository/store/gateway protocols), a production implementation (Postgres/Redis/HTTP) and an in-memory implementation for tests. The shared package keeps wire schemas single-sourced so services can't drift.
+
 ---
 
-## Local Development
+## API reference
 
-### Prerequisites
+All endpoints are served through the gateway on port 8000. Write operations take the user from the `X-User-ID` header.
 
-- Docker Desktop ≥ 4.20 + Docker Compose v2
-- Python 3.11+
-- Make
-- OpenAI API key (for embedding service) or use the local sentence-transformer fallback
+### Memories
 
-### 1. Clone & configure
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/memories` | Store a conversation turn (content is embedded automatically) |
+| `GET` | `/api/v1/memories/{user_id}` | Paginated history, newest first (`limit`, `offset`) |
+| `GET` | `/api/v1/memories/{user_id}/context?query=&top_k=` | Semantic search with similarity/recency/score breakdown |
+| `PATCH` | `/api/v1/memories/{user_id}/{memory_id}` | Merge metadata into a memory |
+| `DELETE` | `/api/v1/memories/{user_id}/{memory_id}` | Delete a memory |
 
-```bash
-git clone https://github.com/YOUR_USERNAME/conv-memory-platform.git
-cd conv-memory-platform
-cp .env.example .env
-# Edit .env — at minimum, set OPENAI_API_KEY (or EMBEDDING_BACKEND=local)
-```
+### Personalization
 
-### 2. Start the full stack
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/personalization/{user_id}/profile` | Preferences, top intents, activity stats |
+| `POST` | `/api/v1/personalization/{user_id}/signal` | Upsert an explicit preference (`{"key":"tone","value":"concise"}`) |
+| `GET` | `/api/v1/personalization/{user_id}/context-bundle?query=` | Profile + top-K relevant memories in one payload |
 
-```bash
-make dev
-```
+### Sessions
 
-| Service | URL |
-|---|---|
-| API Gateway | http://localhost:8000/docs |
-| Memory Service | http://localhost:8001/docs |
-| Personalization | http://localhost:8002/docs |
-| Embedding Service | http://localhost:8003/docs |
-| Session Service | http://localhost:8004/docs |
-| Grafana | http://localhost:3001 (admin/admin) |
-| Jaeger | http://localhost:16686 |
-| Kafka UI | http://localhost:8080 |
-| Prometheus | http://localhost:9090 |
-| pgAdmin | http://localhost:5050 |
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/sessions` | Create a session (default TTL 30 min) |
+| `GET` | `/api/v1/sessions/{session_id}` | Get session state; refreshes the TTL |
+| `PATCH` | `/api/v1/sessions/{session_id}` | Merge state keys |
+| `DELETE` | `/api/v1/sessions/{session_id}` | End session; returns final state for long-term flush |
 
-### 3. Store a conversation memory
+### Embeddings & health
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/embed` | Batch text → unit vectors (`{"texts": ["..."]}`) |
+| `GET` | `/healthz` | Aggregate health of all services + circuit states |
+
+Example — store a memory and retrieve context:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/memories \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: user-123" \
-  -d '{
-    "session_id": "sess-abc",
-    "role": "user",
-    "content": "I prefer concise answers. I am a senior Python engineer.",
-    "metadata": {"intent": "preference_setting"}
-  }'
-```
+  -H "Content-Type: application/json" -H "X-User-ID: user-123" \
+  -d '{"session_id":"sess-abc","role":"user",
+       "content":"I prefer concise answers. I am a senior Python engineer.",
+       "metadata":{"intent":"preference_setting"}}'
 
-### 4. Retrieve relevant context for a new conversation turn
-
-```bash
-curl "http://localhost:8000/api/v1/memories/user-123/context?query=python+coding+help&top_k=5"
-```
-
-### 5. Get personalization signals
-
-```bash
-curl "http://localhost:8000/api/v1/personalization/user-123/profile"
+curl "http://localhost:8000/api/v1/memories/user-123/context?query=python+help&top_k=5"
 ```
 
 ---
 
-## Deploy to AWS
+## Configuration
 
-### Prerequisites
-AWS CLI v2, Terraform 1.7+, kubectl, helm
+Everything is environment-driven (see `.env.example`, which works as-is):
 
-### 1. Bootstrap Terraform state
-
-```bash
-cd infrastructure/terraform/environments/aws
-chmod +x bootstrap.sh && ./bootstrap.sh
-```
-
-### 2. Configure & apply
-
-```bash
-cp terraform.tfvars.example terraform.tfvars
-# Edit: aws_region, cluster_name, db_password, openai_api_key
-terraform init && terraform plan -out=tfplan && terraform apply tfplan
-```
-
-**Provisions:** VPC (3 AZs + NAT) · EKS 1.29 (m5.2xlarge, 3–30 nodes) · Amazon MSK (3-broker Kafka) · RDS PostgreSQL 15 + pgvector · ElastiCache Redis (cluster mode) · DynamoDB (on-demand) · S3 conversation archive · ECR repositories · IAM/IRSA roles
-
-### 3. Deploy application
-
-```bash
-aws eks update-kubeconfig --name conv-memory-prod --region us-east-1
-make build-push AWS_ACCOUNT_ID=123456789012 AWS_REGION=us-east-1
-helm upgrade --install conv-memory ./helm \
-  --namespace conv-memory --create-namespace \
-  --values helm/values-aws.yaml \
-  --set image.tag=$(git rev-parse --short HEAD)
-```
-
----
-
-## Deploy to Azure
-
-### Prerequisites
-Azure CLI, Terraform 1.7+, kubectl, helm
-
-### 1. Authenticate
-
-```bash
-az login
-az ad sp create-for-rbac --name "conv-memory-sp" --role Contributor \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID --sdk-auth > azure-credentials.json
-export ARM_CLIENT_ID=$(jq -r .clientId azure-credentials.json)
-export ARM_CLIENT_SECRET=$(jq -r .clientSecret azure-credentials.json)
-export ARM_SUBSCRIPTION_ID=$(jq -r .subscriptionId azure-credentials.json)
-export ARM_TENANT_ID=$(jq -r .tenantId azure-credentials.json)
-```
-
-### 2. Deploy
-
-```bash
-cd infrastructure/terraform/environments/azure
-cp terraform.tfvars.example terraform.tfvars
-terraform init && terraform apply
-```
-
-**Provisions:** Resource Group + VNet · AKS 1.29 (Standard_D8s_v3, autoscale) · Azure Event Hubs (Kafka-compatible) · PostgreSQL Flexible Server + pgvector · Azure Cache for Redis · CosmosDB (Mongo API) · Azure Container Registry · Blob Storage
-
-### 3. Deploy application
-
-```bash
-az aks get-credentials --resource-group conv-memory-rg --name conv-memory-aks
-az acr login --name convmemoryacr
-make build-push ACR_NAME=convmemoryacr
-helm upgrade --install conv-memory ./helm --values helm/values-azure.yaml
-```
-
----
-
-## Deploy to GCP
-
-### Prerequisites
-gcloud CLI, Terraform 1.7+, kubectl, helm
-
-### 1. Enable APIs
-
-```bash
-gcloud services enable container.googleapis.com sqladmin.googleapis.com \
-  redis.googleapis.com pubsub.googleapis.com storage.googleapis.com \
-  artifactregistry.googleapis.com firestore.googleapis.com
-```
-
-### 2. Deploy
-
-```bash
-cd infrastructure/terraform/environments/gcp
-cp terraform.tfvars.example terraform.tfvars
-terraform init && terraform apply
-```
-
-**Provisions:** VPC + Private subnets + Cloud NAT · GKE (e2-standard-8, autoscale) · Cloud Pub/Sub · Cloud SQL PostgreSQL 15 (REGIONAL HA) + pgvector · Memorystore Redis 7 · Firestore (native mode) · GCS archive · Artifact Registry
-
-### 3. Deploy application
-
-```bash
-gcloud container clusters get-credentials conv-memory-gke --region us-central1
-gcloud auth configure-docker us-central1-docker.pkg.dev
-make build-push GCP_PROJECT=YOUR_PROJECT GCP_REGION=us-central1
-helm upgrade --install conv-memory ./helm --values helm/values-gcp.yaml
-```
-
----
-
-## API Reference
-
-### Memory API
-
-| Method | Endpoint | Description |
+| Variable | Default | Purpose |
 |---|---|---|
-| POST | `/api/v1/memories` | Store a conversation turn |
-| GET | `/api/v1/memories/{user_id}` | Retrieve conversation history |
-| GET | `/api/v1/memories/{user_id}/context` | Semantic search: top-K relevant memories |
-| DELETE | `/api/v1/memories/{user_id}/{memory_id}` | Delete a specific memory |
-| PATCH | `/api/v1/memories/{user_id}/{memory_id}` | Mutate memory metadata |
-
-### Personalization API
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/v1/personalization/{user_id}/profile` | User preference profile |
-| GET | `/api/v1/personalization/{user_id}/context-bundle` | Ranked context bundle for next AI turn |
-| POST | `/api/v1/personalization/{user_id}/signal` | Ingest explicit preference signal |
-
-### Session API
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/sessions` | Create new session |
-| GET | `/api/v1/sessions/{session_id}` | Get active session context |
-| PATCH | `/api/v1/sessions/{session_id}` | Update session state |
-| DELETE | `/api/v1/sessions/{session_id}` | End session, flush to long-term |
+| `EMBEDDING_BACKEND` | `local` | `local` (deterministic, zero keys) or `openai` |
+| `OPENAI_API_KEY` | _empty_ | Only needed for the OpenAI backend |
+| `SESSION_TTL_SECONDS` | `1800` | Session lifetime; reads slide the window |
+| `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST` | `20` / `40` | Per-user gateway rate limit |
+| `CIRCUIT_FAILURE_THRESHOLD` | `5` | Consecutive failures before a circuit opens |
+| `CIRCUIT_RESET_SECONDS` | `30` | Cooldown before a half-open probe |
+| `*_HOST_PORT` | `8000`–`8004`, `5432`, `6379` | Remap host ports if another project uses them |
 
 ---
 
-## Running Tests
+## Testing
 
 ```bash
-make test-unit          # Fast, no infrastructure
-make test-integration   # Requires: make dev
-make test-e2e           # Full black-box end-to-end
-make coverage           # HTML report, target ≥80%
+make test-unit          # 70 unit tests, no infrastructure, ~2s
+make test-integration   # cross-service tests   (requires: make dev)
+make test-e2e           # golden path via gateway (requires: make dev)
+make lint               # ruff
+make coverage           # HTML coverage report
 ```
+
+CI runs lint + unit on every PR, then boots the full compose stack and runs the integration/e2e suites against it.
 
 ---
 
-## Dashboards
+## Deployment
 
-Grafana (http://localhost:3001) ships with pre-built dashboards:
+Ranked easiest-first:
 
-- **Memory Operations** — store/retrieve latency, cache hit rate, vector search p99
-- **Session Health** — active sessions, TTL expiry rate, Redis memory pressure
-- **Personalization Pipeline** — embedding throughput, profile update lag
-- **Kafka Throughput** — consumer lag per topic, partition balance
-- **API Gateway** — per-endpoint p50/p95/p99, error rate, rate limit hits
+### 1. Docker Compose (recommended start)
+What the quickstart does. Suitable for development, demos, and small single-host deployments:
+
+```bash
+./scripts/quickstart.sh        # or: make dev
+```
+
+### 2. Single VM
+The same compose file runs unchanged on any VM with Docker (EC2, Droplet, Compute Engine, Hetzner):
+
+```bash
+ssh your-vm 'git clone <repo> && cd <repo> && ./scripts/quickstart.sh'
+```
+
+Then put a TLS reverse proxy (Caddy or nginx) in front of port 8000 — it's the only port you expose; databases and internal services stay on the compose network, and host-published dev ports bind to loopback only. Set a real `POSTGRES_PASSWORD` in `.env`.
+
+### 3. Kubernetes / managed cloud
+The services are stateless 12-factor containers (config via env, health endpoints, one process per container), so they map directly onto any k8s platform: build the five Dockerfiles, point the `*_SERVICE_URL` env vars at cluster DNS, and use managed Postgres (with pgvector) + Redis. Helm charts and Terraform modules are tracked as future work in the issues.
+
+---
+
+## Roadmap
+
+Deliberately not in this codebase yet — each lands with tests when it lands:
+
+- Kafka/PubSub event streaming between services (`memory.stored`, `session.ended`, …)
+- Prometheus metrics + OpenTelemetry tracing + Grafana dashboards
+- Helm chart and Terraform modules for AWS/GCP/Azure
+- Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
+- Authentication in front of the gateway
+
+## Development workflow
+
+Work is organized as GitHub issues (#1–#8), one branch and one PR per issue, stacked in order. Each PR describes what it does, why it's shaped that way, and how it was verified. Unit tests use in-memory implementations of every storage protocol, so `pytest` is fast and infrastructure-free; the compose stack is only needed for integration/e2e.
