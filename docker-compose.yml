@@ -71,5 +71,23 @@ services:
       timeout: 5s
       retries: 5
 
+  session:
+    build:
+      context: .
+      dockerfile: services/session/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
+    ports:
+      - "127.0.0.1:8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8004/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
