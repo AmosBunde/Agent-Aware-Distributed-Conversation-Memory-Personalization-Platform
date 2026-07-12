@@ -19,5 +19,6 @@ testpaths = [
     "services/embedding/tests",
     "services/memory/tests",
     "services/session/tests",
+    "services/personalization/tests",
 ]
 addopts = "-q"
