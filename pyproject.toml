@@ -16,5 +16,6 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 asyncio_mode = "auto"
 testpaths = [
     "shared/tests",
+    "services/embedding/tests",
 ]
 addopts = "-q"
