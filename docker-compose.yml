@@ -113,5 +113,36 @@ services:
       timeout: 5s
       retries: 5
 
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      MEMORY_SERVICE_URL: http://memory:8001
+      PERSONALIZATION_SERVICE_URL: http://personalization:8002
+      EMBEDDING_SERVICE_URL: http://embedding:8003
+      SESSION_SERVICE_URL: http://session:8004
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
+      CIRCUIT_FAILURE_THRESHOLD: ${CIRCUIT_FAILURE_THRESHOLD:-5}
+      CIRCUIT_RESET_SECONDS: ${CIRCUIT_RESET_SECONDS:-30}
+    ports:
+      # The one public door: web console + all APIs
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      memory:
+        condition: service_healthy
+      session:
+        condition: service_healthy
+      personalization:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:

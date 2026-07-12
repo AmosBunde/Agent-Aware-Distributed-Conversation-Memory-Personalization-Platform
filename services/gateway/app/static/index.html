@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>convmem console</title>
+<style>
+  :root {
+    --bg: #0E1116;
+    --surface: #161B22;
+    --raise: #1C232C;
+    --line: #262D37;
+    --text: #E6EDF3;
+    --muted: #8B97A5;
+    --amber: #E8A33D;
+    --amber-dim: #8A6323;
+    --ok: #4CAF7D;
+    --err: #E05D5D;
+    --blue: #5B9DD9;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { color-scheme: dark; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.55 var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  ::selection { background: var(--amber-dim); }
+  button, input, select, textarea {
+    font: inherit;
+    color: inherit;
+    background: var(--raise);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 7px 10px;
+  }
+  input, select, textarea { width: 100%; }
+  textarea { resize: vertical; min-height: 72px; font-family: var(--mono); font-size: 13px; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 1px;
+    border-color: var(--amber);
+  }
+  button { cursor: pointer; transition: border-color .15s, background .15s; }
+  button:hover { border-color: var(--amber-dim); }
+  button.primary {
+    background: var(--amber);
+    color: #14100A;
+    border-color: var(--amber);
+    font-weight: 600;
+  }
+  button.primary:hover { background: #F0B457; }
+  label {
+    display: block;
+    font: 600 10.5px/1 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 12px 0 5px;
+  }
+
+  /* ── header ─────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .wordmark { font: 700 15px var(--mono); letter-spacing: .02em; }
+  .wordmark .dim { color: var(--muted); font-weight: 400; }
+  .wordmark::before {
+    content: "◉";
+    color: var(--amber);
+    margin-right: 8px;
+  }
+  #health {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    font: 11px var(--mono);
+  }
+  .cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 4px 9px;
+    color: var(--muted);
+  }
+  .cell i {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+  }
+  .cell.ok i { background: var(--ok); }
+  .cell.down i { background: var(--err); }
+  .cell.ok { color: var(--text); }
+  #userbox { display: flex; align-items: center; gap: 8px; }
+  #userbox input { width: 150px; font-family: var(--mono); font-size: 12.5px; padding: 5px 8px; }
+  #userbox span { font: 600 10.5px var(--mono); letter-spacing: .12em; color: var(--muted); }
+
+  /* ── layout ─────────────────────────────────────────── */
+  .grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 330px 1fr;
+    gap: 0;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .rail {
+    border-right: 1px solid var(--line);
+    padding: 18px 22px 28px;
+  }
+  @media (max-width: 900px) { .rail { border-right: 0; border-bottom: 1px solid var(--line); } }
+  .main { padding: 18px 22px 28px; min-width: 0; }
+  h2 {
+    font: 600 11px var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--amber);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 4px;
+  }
+  section + section { margin-top: 28px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; }
+  .actions button { flex: 0 0 auto; }
+
+  /* ── results ────────────────────────────────────────── */
+  .hit {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    border-radius: 4px;
+    background: var(--surface);
+    padding: 12px 14px;
+    margin-top: 10px;
+  }
+  .hit .meta {
+    display: flex;
+    gap: 12px;
+    font: 11px var(--mono);
+    color: var(--muted);
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .hit .content { font-family: var(--mono); font-size: 13px; word-break: break-word; }
+  .spectrum { margin-top: 10px; display: grid; grid-template-columns: 72px 1fr 52px; gap: 4px 10px; align-items: center; }
+  .spectrum .k { font: 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .spectrum .v { font: 11px var(--mono); color: var(--text); text-align: right; }
+  .meter { height: 5px; background: var(--raise); border-radius: 3px; overflow: hidden; }
+  .meter b { display: block; height: 100%; border-radius: 3px; }
+  .meter.sim b { background: var(--blue); }
+  .meter.rec b { background: var(--ok); }
+  .meter.tot b { background: var(--amber); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    font: 11.5px var(--mono);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 3px 8px;
+    background: var(--raise);
+  }
+  .chip b { color: var(--amber); font-weight: 600; }
+  .kv { font: 12px var(--mono); color: var(--muted); margin-top: 8px; }
+  .kv strong { color: var(--text); font-weight: 600; }
+
+  .empty {
+    color: var(--muted);
+    font-size: 13px;
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .flash { animation: flash .5s ease-out; }
+  @keyframes flash { from { background: var(--amber-dim); } }
+  @media (prefers-reduced-motion: reduce) {
+    .flash { animation: none; }
+    button { transition: none; }
+  }
+
+  /* ── request log ────────────────────────────────────── */
+  #log {
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    font: 11.5px/1.9 var(--mono);
+    padding: 8px 22px;
+    max-height: 132px;
+    overflow-y: auto;
+    white-space: nowrap;
+  }
+  #log .t { color: var(--muted); }
+  #log .m { color: var(--blue); }
+  #log .s-ok { color: var(--ok); }
+  #log .s-err { color: var(--err); }
+  #log .ms { color: var(--amber); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">convmem<span class="dim">/console</span></div>
+  <div id="userbox">
+    <span>user</span>
+    <input id="user" value="user-demo" spellcheck="false" aria-label="User ID">
+  </div>
+  <nav id="health" aria-label="Service health"></nav>
+</header>
+
+<div class="grid">
+  <aside class="rail">
+    <section aria-labelledby="store-h">
+      <h2 id="store-h">Store memory</h2>
+      <label for="sess">Session</label>
+      <input id="sess" value="sess-demo" spellcheck="false">
+      <div class="row">
+        <div>
+          <label for="role">Role</label>
+          <select id="role">
+            <option>user</option>
+            <option>assistant</option>
+            <option>system</option>
+          </select>
+        </div>
+        <div>
+          <label for="intent">Intent</label>
+          <input id="intent" placeholder="coding_help" spellcheck="false">
+        </div>
+      </div>
+      <label for="content">Content</label>
+      <textarea id="content" spellcheck="false">I prefer concise answers. I am a senior Python engineer.</textarea>
+      <div class="actions">
+        <button class="primary" id="store-btn">Store memory</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="signal-h">
+      <h2 id="signal-h">Preference signal</h2>
+      <div class="row">
+        <div>
+          <label for="sig-key">Key</label>
+          <input id="sig-key" value="tone" spellcheck="false">
+        </div>
+        <div>
+          <label for="sig-val">Value</label>
+          <input id="sig-val" value="concise" spellcheck="false">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="signal-btn">Send signal</button>
+      </div>
+    </section>
+  </aside>
+
+  <main class="main">
+    <section aria-labelledby="search-h">
+      <h2 id="search-h">Context search</h2>
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:3">
+          <label for="query">Query</label>
+          <input id="query" value="python coding help" spellcheck="false">
+        </div>
+        <div>
+          <label for="topk">Top K</label>
+          <input id="topk" type="number" value="5" min="1" max="50">
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="search-btn">Search context</button>
+        <button id="bundle-btn">Build context bundle</button>
+        <button id="profile-btn">Load profile</button>
+      </div>
+      <div id="profile-out"></div>
+      <div id="results">
+        <p class="empty">Nothing retrieved yet. Store a few turns on the left, then search.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="log" aria-label="Request log" role="log"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+
+function logLine(method, path, status, ms) {
+  const ok = status >= 200 && status < 400;
+  const line = document.createElement("div");
+  line.innerHTML =
+    `<span class="t">${new Date().toLocaleTimeString()}</span> ` +
+    `<span class="m">${method.padEnd(6)}</span> ${path} ` +
+    `<span class="${ok ? "s-ok" : "s-err"}">${status}</span> ` +
+    `<span class="ms">${ms}ms</span>`;
+  logEl.prepend(line);
+  while (logEl.childElementCount > 40) logEl.lastChild.remove();
+}
+
+async function api(method, path, body) {
+  const started = performance.now();
+  const resp = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-ID": $("user").value.trim() || "anonymous",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  logLine(method, path, resp.status, Math.round(performance.now() - started));
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`${resp.status}: ${detail.slice(0, 300)}`);
+  }
+  return resp.status === 204 ? null : resp.json();
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ── health strip ─────────────────────────────────────── */
+async function refreshHealth() {
+  const cells = { gateway: "…", memory: "…", session: "…", personalization: "…", embedding: "…" };
+  try {
+    const resp = await fetch("/healthz");
+    const body = await resp.json();
+    cells.gateway = body.status;
+    for (const [name, entry] of Object.entries(body.upstreams || {})) cells[name] = entry.status;
+  } catch {
+    for (const k of Object.keys(cells)) cells[k] = "down";
+  }
+  $("health").innerHTML = Object.entries(cells)
+    .map(([name, status]) =>
+      `<span class="cell ${status === "ok" ? "ok" : "down"}" title="${name}: ${status}">` +
+      `<i></i>${name}</span>`)
+    .join("");
+}
+refreshHealth();
+setInterval(refreshHealth, 5000);
+
+/* ── render helpers ───────────────────────────────────── */
+function meterRow(kind, label, value) {
+  const pct = Math.max(0, Math.min(100, value * 100)).toFixed(1);
+  return `<span class="k">${label}</span>
+    <span class="meter ${kind}"><b style="width:${pct}%"></b></span>
+    <span class="v">${value.toFixed(3)}</span>`;
+}
+
+function renderHit(scored) {
+  const m = scored.memory;
+  const intent = m.metadata && m.metadata.intent ? ` · ${esc(m.metadata.intent)}` : "";
+  return `<article class="hit flash">
+    <div class="meta">
+      <span>${esc(m.role)}</span>
+      <span>${esc(m.session_id)}${intent}</span>
+      <span>${new Date(m.created_at).toLocaleString()}</span>
+    </div>
+    <div class="content">${esc(m.content)}</div>
+    <div class="spectrum">
+      ${meterRow("sim", "similarity", scored.similarity)}
+      ${meterRow("rec", "recency", scored.recency)}
+      ${meterRow("tot", "score", scored.score)}
+    </div>
+  </article>`;
+}
+
+function renderProfile(profile) {
+  const prefs = Object.entries(profile.preferences || {});
+  const intents = profile.top_intents || [];
+  return `<div class="hit flash" style="border-left-color:var(--blue)">
+    <div class="meta"><span>profile</span><span>${esc(profile.user_id)}</span></div>
+    <div class="chips">
+      ${prefs.map(([k, v]) => `<span class="chip"><b>${esc(k)}</b> = ${esc(v)}</span>`).join("") ||
+        '<span class="chip">no explicit preferences yet</span>'}
+    </div>
+    <div class="chips">
+      ${intents.map((i) => `<span class="chip">${esc(i)}</span>`).join("") ||
+        '<span class="chip">no intents inferred yet</span>'}
+    </div>
+    <p class="kv"><strong>${profile.memory_count}</strong> memories on record
+      ${profile.last_seen ? ` · last seen ${new Date(profile.last_seen).toLocaleString()}` : ""}</p>
+  </div>`;
+}
+
+function showResults(html) {
+  $("results").innerHTML = html ||
+    '<p class="empty">No matches. Store more memories or broaden the query.</p>';
+}
+
+/* ── actions ──────────────────────────────────────────── */
+function onError(err) { showResults(`<p class="empty">Request failed — ${esc(err.message)}</p>`); }
+
+$("store-btn").addEventListener("click", async () => {
+  const metadata = {};
+  if ($("intent").value.trim()) metadata.intent = $("intent").value.trim();
+  try {
+    const memory = await api("POST", "/api/v1/memories", {
+      session_id: $("sess").value.trim() || "sess-demo",
+      role: $("role").value,
+      content: $("content").value,
+      metadata,
+    });
+    showResults(renderHit({ memory, similarity: 1, recency: 1, score: 1 }));
+  } catch (err) { onError(err); }
+});
+
+$("signal-btn").addEventListener("click", async () => {
+  const user = encodeURIComponent($("user").value.trim() || "anonymous");
+  try {
+    await api("POST", `/api/v1/personalization/${user}/signal`, {
+      key: $("sig-key").value.trim(),
+      value: $("sig-val").value.trim(),
+    });
+    const profile = await api("GET", `/api/v1/personalization/${user}/profile`);
+    $("profile-out").innerHTML = renderProfile(profile);
+  } catch (err) { onError(err); }
+});
+
+$("search-btn").addEventListener("click", async () => {
+  const user = encodeURIComponent($("user").value.trim() || "anonymous");
+  const params = new URLSearchParams({ query: $("query").value, top_k: $("topk").value });
+  try {
+    const hits = await api("GET", `/api/v1/memories/${user}/context?${params}`);
+    showResults(hits.map(renderHit).join(""));
+  } catch (err) { onError(err); }
+});
+
+$("bundle-btn").addEventListener("click", async () => {
+  const user = encodeURIComponent($("user").value.trim() || "anonymous");
+  const params = new URLSearchParams({ query: $("query").value, top_k: $("topk").value });
+  try {
+    const bundle = await api("GET", `/api/v1/personalization/${user}/context-bundle?${params}`);
+    $("profile-out").innerHTML = renderProfile(bundle.profile);
+    showResults((bundle.memories || []).map(renderHit).join(""));
+  } catch (err) { onError(err); }
+});
+
+$("profile-btn").addEventListener("click", async () => {
+  const user = encodeURIComponent($("user").value.trim() || "anonymous");
+  try {
+    const profile = await api("GET", `/api/v1/personalization/${user}/profile`);
+    $("profile-out").innerHTML = renderProfile(profile);
+  } catch (err) { onError(err); }
+});
+</script>
+</body>
+</html>
