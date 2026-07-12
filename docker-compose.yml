@@ -30,5 +30,21 @@ services:
       timeout: 3s
       retries: 10
 
+  embedding:
+    build:
+      context: .
+      dockerfile: services/embedding/Dockerfile
+    environment:
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-local}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8003/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
