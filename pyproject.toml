@@ -23,3 +23,7 @@ testpaths = [
     "services/gateway/tests",
 ]
 addopts = "-q"
+markers = [
+    "integration: requires a running stack (make dev)",
+    "e2e: black-box tests through the gateway (make dev)",
+]
