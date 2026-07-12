@@ -20,5 +20,6 @@ testpaths = [
     "services/memory/tests",
     "services/session/tests",
     "services/personalization/tests",
+    "services/gateway/tests",
 ]
 addopts = "-q"
