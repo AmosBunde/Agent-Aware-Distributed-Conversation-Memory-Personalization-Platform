@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from convmem_shared.events import EventPublisher, NullEventPublisher, RedisEventPublisher
+from convmem_shared.events import EventPublisher, build_publisher
 from convmem_shared.health import health_router
 from convmem_shared.observability import instrument
 from convmem_shared.schemas import Memory, MemoryCreate, MemoryUpdate, ScoredMemory
@@ -42,12 +42,9 @@ def create_app(
                 settings.embedding_service_url, settings.http_timeout_seconds
             )
         if state["publisher"] is None:
-            if settings.redis_url:
-                import redis.asyncio as redis
-
-                state["publisher"] = RedisEventPublisher(redis.from_url(settings.redis_url))
-            else:
-                state["publisher"] = NullEventPublisher()
+            state["publisher"] = build_publisher(
+                settings.event_bus, settings.redis_url, settings.kafka_bootstrap_servers
+            )
         yield
         close = getattr(state["repo"], "close", None)
         if close:

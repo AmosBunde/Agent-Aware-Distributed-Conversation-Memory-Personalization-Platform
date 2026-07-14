@@ -230,7 +230,10 @@ docker compose --profile observability up -d
 
 ## Events
 
-Services publish to Redis Streams (`convmem.events.<topic>`) so consumers can subscribe with `XREAD`/consumer groups instead of polling: `memory.stored`, `memory.wiped`, and `session.ended`. Publishing is best-effort and never fails the triggering request; streams are capped at ~10k entries per topic. The `EventPublisher` protocol is the seam for a Kafka/PubSub upgrade.
+Services publish `memory.stored`, `memory.wiped`, and `session.ended` to `convmem.events.<topic>`. Publishing is best-effort and never fails the triggering request. Two transports, selected by `EVENT_BUS`:
+
+- **`redis`** (default) — Redis Streams, zero extra infrastructure; consume with `XREAD`/consumer groups; capped at ~10k entries per topic
+- **`kafka`** — `docker compose --profile kafka up -d` starts a single-node KRaft broker; set `EVENT_BUS=kafka`. Same topics, standard Kafka consumers.
 
 ## Schema migrations
 
@@ -240,7 +243,6 @@ Numbered SQL files in `scripts/migrations/` are the single source of truth for t
 
 Deliberately not in this codebase yet — each lands with tests when it lands:
 
-- Kafka/PubSub event transport (Redis Streams events ship today behind the `EventPublisher` protocol)
 - Helm chart and Terraform modules for AWS/GCP/Azure
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
 

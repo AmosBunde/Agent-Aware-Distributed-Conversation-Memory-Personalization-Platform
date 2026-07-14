@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from convmem_shared.events import EventPublisher, RedisEventPublisher
+from convmem_shared.events import EventPublisher, build_publisher
 from convmem_shared.health import health_router
 from convmem_shared.observability import instrument
 from convmem_shared.schemas import Session, SessionCreate, SessionUpdate
@@ -40,9 +40,9 @@ def create_app(
 
     def get_publisher() -> EventPublisher:
         if state["publisher"] is None:
-            import redis.asyncio as redis
-
-            state["publisher"] = RedisEventPublisher(redis.from_url(settings.redis_url))
+            state["publisher"] = build_publisher(
+                settings.event_bus, settings.redis_url, settings.kafka_bootstrap_servers
+            )
         return state["publisher"]
 
     app = FastAPI(title="Session Service", version="0.1.0")

@@ -50,3 +50,54 @@ class NullEventPublisher:
 
     async def publish(self, topic: str, payload: dict[str, Any]) -> bool:
         return False
+
+
+class KafkaEventPublisher:
+    """Kafka transport for the same topics (``convmem.events.<topic>``).
+
+    The producer is created lazily on first publish and reset on failure so
+    a broker restart heals without a service restart. Same best-effort
+    contract as the Redis implementation.
+    """
+
+    def __init__(self, bootstrap_servers: str, producer=None, request_timeout_ms: int = 5000):
+        self._bootstrap = bootstrap_servers
+        self._producer = producer
+        self._request_timeout_ms = request_timeout_ms
+
+    async def _ensure_producer(self):
+        if self._producer is None:
+            from aiokafka import AIOKafkaProducer
+
+            producer = AIOKafkaProducer(
+                bootstrap_servers=self._bootstrap,
+                request_timeout_ms=self._request_timeout_ms,
+            )
+            await producer.start()
+            self._producer = producer
+        return self._producer
+
+    async def publish(self, topic: str, payload: dict[str, Any]) -> bool:
+        try:
+            producer = await self._ensure_producer()
+            message = json.dumps({**payload, "emitted_at": utcnow().isoformat()})
+            await producer.send_and_wait(STREAM_PREFIX + topic, message.encode())
+            return True
+        except Exception:
+            self._producer = None  # rebuild the connection on the next attempt
+            return False
+
+
+def build_publisher(
+    event_bus: str,
+    redis_url: str = "",
+    kafka_bootstrap_servers: str = "",
+) -> EventPublisher:
+    """Select the transport from configuration (EVENT_BUS env)."""
+    if event_bus == "kafka" and kafka_bootstrap_servers:
+        return KafkaEventPublisher(kafka_bootstrap_servers)
+    if event_bus == "redis" and redis_url:
+        import redis.asyncio as redis
+
+        return RedisEventPublisher(redis.from_url(redis_url))
+    return NullEventPublisher()
