@@ -29,8 +29,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         if state["repo"] is None:
+            from pathlib import Path
+
+            from .migrations import run_migrations
             from .postgres import PostgresMemoryRepository
 
+            await run_migrations(settings.postgres_dsn, Path(settings.migrations_dir))
             state["repo"] = await PostgresMemoryRepository.connect(settings.postgres_dsn)
         if state["embedder"] is None:
             state["embedder"] = HttpEmbedder(

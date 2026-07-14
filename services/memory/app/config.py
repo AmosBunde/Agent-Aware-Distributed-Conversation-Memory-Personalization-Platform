@@ -20,6 +20,9 @@ class Settings(BaseServiceSettings):
     # Event bus (Redis Streams); empty disables publishing
     redis_url: str = "redis://redis:6379/0"
 
+    # SQL migrations applied on startup (memory service owns the schema)
+    migrations_dir: str = "scripts/migrations"
+
     # Ranking weights: score = w_similarity * cosine + w_recency * exp(-age/half_life)
     rank_weight_similarity: float = 0.75
     rank_weight_recency: float = 0.25

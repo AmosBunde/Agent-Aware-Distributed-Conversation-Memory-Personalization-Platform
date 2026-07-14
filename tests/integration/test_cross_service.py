@@ -119,3 +119,28 @@ def test_events_land_in_redis_streams(memory, user_id):
     ours = [p for p in payloads if p["user_id"] == user_id]
     assert len(ours) == 1
     assert "emitted_at" in ours[0]
+
+
+async def test_migrations_are_applied_and_recorded():
+    import os
+
+    import asyncpg
+
+    dsn = os.environ.get(
+        "TEST_POSTGRES_DSN",
+        "postgresql://convmem:convmem-dev-password@localhost:5432/convmem",
+    )
+    conn = await asyncpg.connect(dsn)
+    try:
+        versions = [
+            r["version"]
+            for r in await conn.fetch("SELECT version FROM schema_migrations ORDER BY version")
+        ]
+        tables = {
+            r["tablename"]
+            for r in await conn.fetch("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+        }
+    finally:
+        await conn.close()
+    assert versions[0] == "0001_baseline.sql"
+    assert {"memories", "preference_signals", "schema_migrations"} <= tables
