@@ -48,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install test deps
-        run: pip install httpx pytest
+        run: pip install httpx pytest pytest-asyncio redis asyncpg
 
       - name: Boot the stack
         run: |
