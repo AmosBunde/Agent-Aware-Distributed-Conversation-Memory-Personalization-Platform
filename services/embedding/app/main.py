@@ -1,4 +1,5 @@
 from convmem_shared.health import health_router
+from convmem_shared.observability import instrument
 from convmem_shared.schemas import EmbedRequest, EmbedResponse
 from fastapi import FastAPI
 
@@ -14,6 +15,7 @@ backend = build_backend(
 )
 
 app = FastAPI(title="Embedding Service", version="0.1.0")
+instrument(app, settings.service_name)
 app.include_router(health_router(settings.service_name))
 
 

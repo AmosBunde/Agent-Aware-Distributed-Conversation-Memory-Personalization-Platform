@@ -3,6 +3,7 @@ from uuid import UUID
 
 from convmem_shared.events import EventPublisher, NullEventPublisher, RedisEventPublisher
 from convmem_shared.health import health_router
+from convmem_shared.observability import instrument
 from convmem_shared.schemas import Memory, MemoryCreate, MemoryUpdate, ScoredMemory
 from fastapi import FastAPI, Header, HTTPException, Query
 
@@ -53,6 +54,7 @@ def create_app(
             await close()
 
     app = FastAPI(title="Memory Service", version="0.1.0", lifespan=lifespan)
+    instrument(app, settings.service_name)
 
     async def repo_ping() -> bool:
         ping = getattr(state["repo"], "ping", None)

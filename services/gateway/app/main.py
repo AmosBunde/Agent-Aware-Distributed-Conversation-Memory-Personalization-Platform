@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import httpx
+from convmem_shared.observability import instrument
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -79,6 +80,7 @@ def create_app(
     }
 
     app = FastAPI(title="Conversation Memory Platform — API Gateway", version="0.1.0")
+    instrument(app, settings.service_name)
     app.state.breakers = breakers
 
     @app.get("/", include_in_schema=False)

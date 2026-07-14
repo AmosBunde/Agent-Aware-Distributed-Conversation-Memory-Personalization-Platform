@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from convmem_shared.events import EventPublisher, RedisEventPublisher
 from convmem_shared.health import health_router
+from convmem_shared.observability import instrument
 from convmem_shared.schemas import Session, SessionCreate, SessionUpdate
 from fastapi import FastAPI, HTTPException
 
@@ -45,6 +46,7 @@ def create_app(
         return state["publisher"]
 
     app = FastAPI(title="Session Service", version="0.1.0")
+    instrument(app, settings.service_name)
 
     async def redis_ping() -> bool:
         store = await get_store()
