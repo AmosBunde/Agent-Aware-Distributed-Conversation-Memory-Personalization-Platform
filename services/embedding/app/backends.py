@@ -77,11 +77,50 @@ class OpenAIBackend:
         return [item["embedding"] for item in data]
 
 
-def build_backend(backend: str, dim: int, api_key: str = "", model: str = "") -> EmbeddingBackend:
+def build_backend(
+    backend: str, dim: int, api_key: str = "", model: str = "", st_model: str = ""
+) -> EmbeddingBackend:
     if backend == "openai":
         if not api_key:
             raise ValueError("EMBEDDING_BACKEND=openai requires OPENAI_API_KEY")
         return OpenAIBackend(api_key=api_key, model=model, dim=dim)
+    if backend == "sentence-transformers":
+        kwargs = {"model_name": st_model} if st_model else {}
+        return SentenceTransformersBackend(dim=dim, **kwargs)
     if backend == "local":
         return LocalHashingBackend(dim=dim)
     raise ValueError(f"Unknown embedding backend: {backend!r}")
+
+
+class SentenceTransformersBackend:
+    """Local semantic embeddings via sentence-transformers.
+
+    Real semantic quality with no API key — at the cost of heavy optional
+    dependencies (torch), which is why they live in requirements-st.txt
+    instead of the base image. Encoding runs off the event loop.
+    """
+
+    name = "sentence-transformers"
+
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2", dim: int = 384):
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "EMBEDDING_BACKEND=sentence-transformers needs its optional deps: "
+                "pip install -r services/embedding/requirements-st.txt"
+            ) from exc
+        self._model = SentenceTransformer(model_name)
+        model_dim = self._model.get_sentence_embedding_dimension()
+        if model_dim != dim:
+            raise ValueError(
+                f"model {model_name!r} produces {model_dim}-dim vectors but "
+                f"EMBEDDING_DIM={dim}; the memories schema is vector({dim})"
+            )
+        self.dim = dim
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        import asyncio
+
+        vectors = await asyncio.to_thread(self._model.encode, texts, normalize_embeddings=True)
+        return [v.tolist() for v in vectors]

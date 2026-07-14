@@ -1,0 +1,4 @@
+# Optional: semantic embeddings without an API key (heavy - pulls torch).
+# Install on top of requirements.txt, or build the image with
+#   docker compose build --build-arg INSTALL_ST=true embedding
+sentence-transformers>=3.0
