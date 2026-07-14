@@ -118,7 +118,10 @@ resource "aws_eks_cluster" "this" {
   role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
-    subnet_ids = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
+    subnet_ids              = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
+    endpoint_private_access = true
+    endpoint_public_access  = var.eks_endpoint_public_access
+    public_access_cidrs     = var.eks_endpoint_public_access_cidrs
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster]
@@ -206,6 +209,7 @@ resource "aws_db_instance" "postgres" {
 
   multi_az                  = true
   storage_encrypted         = true
+  deletion_protection       = true
   backup_retention_period   = 7
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.name}-final"
@@ -248,6 +252,8 @@ resource "aws_elasticache_replication_group" "redis" {
 
   automatic_failover_enabled = true
   at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
+  auth_token                 = var.redis_auth_token
 
   subnet_group_name  = aws_elasticache_subnet_group.this.name
   security_group_ids = [aws_security_group.redis.id]
@@ -256,8 +262,9 @@ resource "aws_elasticache_replication_group" "redis" {
 # ── ECR: one repository per service ──────────────────────────────────────────
 
 resource "aws_ecr_repository" "service" {
-  for_each = toset(local.services)
-  name     = "${var.name}-${each.value}"
+  for_each             = toset(local.services)
+  name                 = "${var.name}-${each.value}"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

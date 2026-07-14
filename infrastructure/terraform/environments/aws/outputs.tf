@@ -13,7 +13,7 @@ output "postgres_host" {
 
 output "redis_url" {
   description = "Feed to the Helm chart as redis.url"
-  value       = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0"
+  value       = "rediss://:$${TF_VAR_redis_auth_token}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0"
 }
 
 output "ecr_repository_urls" {
@@ -26,7 +26,7 @@ output "helm_install_hint" {
     aws eks update-kubeconfig --name ${aws_eks_cluster.this.name} --region ${var.region}
     helm install convmem ./helm/conv-memory \
       --set postgres.host=${aws_db_instance.postgres.address} \
-      --set redis.url=redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0 \
+      --set redis.url=rediss://:$${TF_VAR_redis_auth_token}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0 \
       --set postgres.password=$TF_VAR_db_password
   EOT
 }

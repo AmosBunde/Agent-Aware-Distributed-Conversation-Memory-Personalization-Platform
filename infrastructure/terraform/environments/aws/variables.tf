@@ -65,3 +65,21 @@ variable "redis_node_type" {
   type        = string
   default     = "cache.r6g.large"
 }
+
+variable "eks_endpoint_public_access" {
+  description = "Expose the EKS control-plane endpoint publicly (private-only by default; use a bastion/VPN, or enable and restrict the CIDRs)"
+  type        = bool
+  default     = false
+}
+
+variable "eks_endpoint_public_access_cidrs" {
+  description = "CIDRs allowed to reach a public EKS endpoint (never leave 0.0.0.0/0 in production)"
+  type        = list(string)
+  default     = []
+}
+
+variable "redis_auth_token" {
+  description = "ElastiCache AUTH token (feed via TF_VAR_redis_auth_token; required with in-transit encryption)"
+  type        = string
+  sensitive   = true
+}
