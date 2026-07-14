@@ -249,7 +249,7 @@ Numbered SQL files in `scripts/migrations/` are the single source of truth for t
 
 Deliberately not in this codebase yet — each lands with tests when it lands:
 
-- Terraform modules for AWS/GCP/Azure
+- Terraform environments for GCP/Azure (AWS reference environment ships in `infrastructure/terraform/environments/aws`)
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
 
 ## Development workflow
