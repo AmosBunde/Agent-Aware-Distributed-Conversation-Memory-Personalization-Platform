@@ -5,6 +5,7 @@ from convmem_shared.observability import instrument
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
+from .auth import AuthError, JwtAuthenticator
 from .circuit_breaker import CircuitBreaker, CircuitOpenError
 from .config import Settings, get_settings
 from .rate_limit import RateLimiter
@@ -67,6 +68,16 @@ def create_app(
         )
         for name, url in upstream_urls.items()
     }
+    authenticator = (
+        JwtAuthenticator(
+            secret=settings.jwt_secret,
+            jwks_url=settings.jwt_jwks_url,
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+        )
+        if (settings.jwt_secret or settings.jwt_jwks_url)
+        else None
+    )
     limiter_kwargs = {"clock": clock} if clock else {}
     limiter = RateLimiter(settings.rate_limit_rps, settings.rate_limit_burst, **limiter_kwargs)
     breakers = {
@@ -129,7 +140,20 @@ def create_app(
                 status_code=401,
             )
 
-        user_id = request.headers.get(
+        subject: str | None = None
+        if authenticator is not None:
+            auth_header = request.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer "):
+                return JSONResponse(
+                    {"detail": "missing bearer token (Authorization header)"},
+                    status_code=401,
+                )
+            try:
+                subject = authenticator.authenticate(auth_header[len("Bearer ") :])
+            except AuthError as exc:
+                return JSONResponse({"detail": f"invalid token: {exc}"}, status_code=401)
+
+        user_id = subject or request.headers.get(
             "X-User-ID", request.client.host if request.client else "anonymous"
         )
         if not limiter.allow(user_id):
@@ -149,6 +173,12 @@ def create_app(
             )
 
         headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
+        if subject is not None:
+            # Authenticated identity wins: drop any client-asserted X-User-ID
+            # (case-insensitively — a duplicate header would smuggle through)
+            # and set the token subject as the only user identity upstream.
+            headers = {k: v for k, v in headers.items() if k.lower() != "x-user-id"}
+            headers["X-User-ID"] = subject
         try:
             upstream_resp = await clients[upstream].request(
                 request.method,

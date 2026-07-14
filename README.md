@@ -164,6 +164,7 @@ Everything is environment-driven (see `.env.example`, which works as-is):
 |---|---|---|
 | `EMBEDDING_BACKEND` | `local` | `local` (deterministic, zero keys) or `openai` |
 | `GATEWAY_API_KEY` | _empty_ | When set, every API request must send it as `X-API-Key` (the console has a key field) |
+| `JWT_SECRET` / `JWT_JWKS_URL` | _empty_ | Per-user auth: require `Authorization: Bearer`; the token's `sub` claim becomes the user id upstream (overrides any client-sent `X-User-ID`). HS256 secret or OIDC JWKS. Optional `JWT_ISSUER`/`JWT_AUDIENCE` checks |
 | `OPENAI_API_KEY` | _empty_ | Only needed for the OpenAI backend |
 | `SESSION_TTL_SECONDS` | `1800` | Session lifetime; reads slide the window |
 | `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST` | `20` / `40` | Per-user gateway rate limit |
@@ -242,7 +243,6 @@ Deliberately not in this codebase yet — each lands with tests when it lands:
 - Kafka/PubSub event transport (Redis Streams events ship today behind the `EventPublisher` protocol)
 - Helm chart and Terraform modules for AWS/GCP/Azure
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
-- Per-user authentication (OIDC / signed tokens) — a shared `GATEWAY_API_KEY` gate ships today
 
 ## Development workflow
 
