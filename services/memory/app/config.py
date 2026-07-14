@@ -17,8 +17,10 @@ class Settings(BaseServiceSettings):
     # embedding service's EMBEDDING_DIM.
     embedding_dim: int = 384
 
-    # Event bus (Redis Streams); empty disables publishing
+    # Event bus: "redis" (default), "kafka", or "none"
+    event_bus: str = "redis"
     redis_url: str = "redis://redis:6379/0"
+    kafka_bootstrap_servers: str = "kafka:9092"
 
     # SQL migrations applied on startup (memory service owns the schema)
     migrations_dir: str = "scripts/migrations"

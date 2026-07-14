@@ -60,6 +60,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convmem-dev-password}
       EMBEDDING_SERVICE_URL: http://embedding:8003
       REDIS_URL: redis://redis:6379/0
+      EVENT_BUS: ${EVENT_BUS:-redis}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
     ports:
       - "127.0.0.1:${MEMORY_HOST_PORT:-8001}:8001"
     depends_on:
@@ -82,6 +84,8 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379/0
+      EVENT_BUS: ${EVENT_BUS:-redis}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
       MEMORY_SERVICE_URL: http://memory:8001
     ports:
@@ -156,6 +160,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── kafka profile: docker compose --profile kafka up (set EVENT_BUS=kafka) ──
+  kafka:
+    image: apache/kafka:3.7.1
+    profiles: ["kafka"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
   # ── observability profile: docker compose --profile observability up ──
   prometheus:
