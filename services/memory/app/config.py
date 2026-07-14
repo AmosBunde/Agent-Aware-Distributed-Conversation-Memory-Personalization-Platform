@@ -17,6 +17,9 @@ class Settings(BaseServiceSettings):
     # embedding service's EMBEDDING_DIM.
     embedding_dim: int = 384
 
+    # Event bus (Redis Streams); empty disables publishing
+    redis_url: str = "redis://redis:6379/0"
+
     # Ranking weights: score = w_similarity * cosine + w_recency * exp(-age/half_life)
     rank_weight_similarity: float = 0.75
     rank_weight_recency: float = 0.25

@@ -58,10 +58,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-convmem}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convmem-dev-password}
       EMBEDDING_SERVICE_URL: http://embedding:8003
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:${MEMORY_HOST_PORT:-8001}:8001"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       embedding:
         condition: service_healthy

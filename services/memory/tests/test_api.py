@@ -111,3 +111,18 @@ async def test_dimension_mismatch_is_a_loud_502(repo):
     assert resp.status_code == 502
     assert "dimension mismatch" in resp.json()["detail"]
     assert "EMBEDDING_DIM" in resp.json()["detail"]
+
+
+async def test_store_publishes_memory_stored_event(client, publisher):
+    created = await store(client, "eventful", intent="coding_help")
+    [(topic, payload)] = publisher.events
+    assert topic == "memory.stored"
+    assert payload["memory_id"] == created["id"]
+    assert payload["user_id"] == "user-123"
+    assert payload["intent"] == "coding_help"
+
+
+async def test_wipe_publishes_memory_wiped_event(client, publisher):
+    await store(client, "a")
+    await client.delete("/api/v1/memories/user-123")
+    assert publisher.events[-1] == ("memory.wiped", {"user_id": "user-123", "deleted": 1})

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+from convmem_shared.events import EventPublisher, NullEventPublisher, RedisEventPublisher
 from convmem_shared.health import health_router
 from convmem_shared.schemas import Memory, MemoryCreate, MemoryUpdate, ScoredMemory
 from fastapi import FastAPI, Header, HTTPException, Query
@@ -15,6 +16,7 @@ def create_app(
     settings: Settings | None = None,
     repository: MemoryRepository | None = None,
     embedder: Embedder | None = None,
+    publisher: EventPublisher | None = None,
 ) -> FastAPI:
     """App factory.
 
@@ -22,7 +24,7 @@ def create_app(
     startup); tests inject an in-memory repository and a fake embedder.
     """
     settings = settings or get_settings()
-    state: dict = {"repo": repository, "embedder": embedder}
+    state: dict = {"repo": repository, "embedder": embedder, "publisher": publisher}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -34,6 +36,13 @@ def create_app(
             state["embedder"] = HttpEmbedder(
                 settings.embedding_service_url, settings.http_timeout_seconds
             )
+        if state["publisher"] is None:
+            if settings.redis_url:
+                import redis.asyncio as redis
+
+                state["publisher"] = RedisEventPublisher(redis.from_url(settings.redis_url))
+            else:
+                state["publisher"] = NullEventPublisher()
         yield
         close = getattr(state["repo"], "close", None)
         if close:
@@ -67,7 +76,18 @@ def create_app(
     async def store_memory(payload: MemoryCreate, x_user_id: str = Header(...)) -> Memory:
         memory = Memory(user_id=x_user_id, **payload.model_dump())
         embedding = await embed_checked(memory.content)
-        return await state["repo"].add(memory, embedding)
+        stored = await state["repo"].add(memory, embedding)
+        await state["publisher"].publish(
+            "memory.stored",
+            {
+                "memory_id": str(stored.id),
+                "user_id": stored.user_id,
+                "session_id": stored.session_id,
+                "role": stored.role,
+                "intent": stored.metadata.get("intent"),
+            },
+        )
+        return stored
 
     @app.get("/api/v1/memories/{user_id}", response_model=list[Memory])
     async def list_memories(
@@ -108,6 +128,7 @@ def create_app(
     async def delete_all_memories(user_id: str) -> dict:
         """Right to be forgotten: remove every memory for this user."""
         deleted = await state["repo"].delete_all(user_id)
+        await state["publisher"].publish("memory.wiped", {"user_id": user_id, "deleted": deleted})
         return {"user_id": user_id, "deleted": deleted}
 
     return app

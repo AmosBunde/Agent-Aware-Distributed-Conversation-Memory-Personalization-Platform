@@ -4,6 +4,8 @@ compose network, addressed directly (not through the gateway).
 Requires: make dev
 """
 
+import json
+
 import httpx
 import pytest
 
@@ -97,3 +99,23 @@ def test_user_wipe_removes_memories_and_signals(memory, personalization, user_id
     assert memory.get(f"/api/v1/memories/{user_id}").json() == []
     profile = personalization.get(f"/api/v1/personalization/{user_id}/profile").json()
     assert profile["memory_count"] == 0 and profile["preferences"] == {}
+
+
+def test_events_land_in_redis_streams(memory, user_id):
+    import os
+
+    import redis as redis_sync
+
+    memory.post(
+        "/api/v1/memories",
+        json={"session_id": "it-sess", "role": "user", "content": "event probe"},
+        headers={"X-User-ID": user_id},
+    )
+    r = redis_sync.Redis.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True
+    )
+    entries = r.xrange("convmem.events.memory.stored")
+    payloads = [json.loads(fields["payload"]) for _, fields in entries]
+    ours = [p for p in payloads if p["user_id"] == user_id]
+    assert len(ours) == 1
+    assert "emitted_at" in ours[0]
