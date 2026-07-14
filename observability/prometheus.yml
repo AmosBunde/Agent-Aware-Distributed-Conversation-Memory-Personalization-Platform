@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: convmem
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - gateway:8000
+          - memory:8001
+          - personalization:8002
+          - embedding:8003
+          - session:8004

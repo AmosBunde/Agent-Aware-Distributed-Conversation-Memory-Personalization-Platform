@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from convmem_shared.health import health_router
+from convmem_shared.observability import instrument
 from convmem_shared.schemas import ContextBundle, PreferenceSignal, UserProfile
 from fastapi import FastAPI, Query
 
@@ -34,6 +35,7 @@ def create_app(
             await close()
 
     app = FastAPI(title="Personalization Service", version="0.1.0", lifespan=lifespan)
+    instrument(app, settings.service_name)
 
     async def signals_ping() -> bool:
         ping = getattr(state["signals"], "ping", None)

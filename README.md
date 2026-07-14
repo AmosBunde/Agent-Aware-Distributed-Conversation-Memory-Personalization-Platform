@@ -212,12 +212,34 @@ The services are stateless 12-factor containers (config via env, health endpoint
 
 ---
 
+## Observability
+
+Every service exposes Prometheus metrics at `/metrics` (request rate, latency histograms, and error counts, labelled by route template). To get the full stack — Prometheus, a provisioned Grafana dashboard, and Jaeger tracing:
+
+```bash
+# in .env: OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+docker compose --profile observability up -d
+```
+
+| Tool | URL | What you get |
+|---|---|---|
+| Grafana | http://localhost:3001 (admin/admin) | Request rate, p95 latency, 5xx rate, top endpoints — per service |
+| Prometheus | http://localhost:9090 | Raw metrics from all five services |
+| Jaeger | http://localhost:16686 | Distributed traces across gateway → service → dependency |
+
+## Events
+
+Services publish to Redis Streams (`convmem.events.<topic>`) so consumers can subscribe with `XREAD`/consumer groups instead of polling: `memory.stored`, `memory.wiped`, and `session.ended`. Publishing is best-effort and never fails the triggering request; streams are capped at ~10k entries per topic. The `EventPublisher` protocol is the seam for a Kafka/PubSub upgrade.
+
+## Schema migrations
+
+Numbered SQL files in `scripts/migrations/` are the single source of truth for the database schema. The memory service applies pending migrations on startup (transactional, advisory-locked, recorded in `schema_migrations`), so schema changes reach existing databases — not just fresh volumes.
+
 ## Roadmap
 
 Deliberately not in this codebase yet — each lands with tests when it lands:
 
-- Kafka/PubSub event streaming between services (`memory.stored`, `session.ended`, …)
-- Prometheus metrics + OpenTelemetry tracing + Grafana dashboards
+- Kafka/PubSub event transport (Redis Streams events ship today behind the `EventPublisher` protocol)
 - Helm chart and Terraform modules for AWS/GCP/Azure
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
 - Per-user authentication (OIDC / signed tokens) — a shared `GATEWAY_API_KEY` gate ships today
