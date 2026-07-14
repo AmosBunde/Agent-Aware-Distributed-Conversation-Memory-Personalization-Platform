@@ -47,10 +47,26 @@ def create_app(
 
     app.include_router(health_router(settings.service_name, checks={"postgres": repo_ping}))
 
+    async def embed_checked(text: str) -> list[float]:
+        """Embed and fail loudly on a dimension mismatch.
+
+        The schema is vector(EMBEDDING_DIM); a misconfigured embedding
+        service would otherwise surface as an opaque SQL error.
+        """
+        vector = await state["embedder"].embed_one(text)
+        if len(vector) != settings.embedding_dim:
+            raise HTTPException(
+                502,
+                f"embedding dimension mismatch: memory service expects "
+                f"{settings.embedding_dim}, embedding service returned {len(vector)}; "
+                f"check EMBEDDING_DIM on both services",
+            )
+        return vector
+
     @app.post("/api/v1/memories", response_model=Memory, status_code=201)
     async def store_memory(payload: MemoryCreate, x_user_id: str = Header(...)) -> Memory:
         memory = Memory(user_id=x_user_id, **payload.model_dump())
-        embedding = await state["embedder"].embed_one(memory.content)
+        embedding = await embed_checked(memory.content)
         return await state["repo"].add(memory, embedding)
 
     @app.get("/api/v1/memories/{user_id}", response_model=list[Memory])
@@ -67,7 +83,7 @@ def create_app(
         query: str = Query(min_length=1),
         top_k: int = Query(5, ge=1, le=50),
     ) -> list[ScoredMemory]:
-        query_vector = await state["embedder"].embed_one(query)
+        query_vector = await embed_checked(query)
         hits = await state["repo"].search(user_id, query_vector, top_k)
         return rank(
             hits,
@@ -87,6 +103,12 @@ def create_app(
     async def delete_memory(user_id: str, memory_id: UUID) -> None:
         if not await state["repo"].delete(user_id, memory_id):
             raise HTTPException(404, "memory not found")
+
+    @app.delete("/api/v1/memories/{user_id}")
+    async def delete_all_memories(user_id: str) -> dict:
+        """Right to be forgotten: remove every memory for this user."""
+        deleted = await state["repo"].delete_all(user_id)
+        return {"user_id": user_id, "deleted": deleted}
 
     return app
 

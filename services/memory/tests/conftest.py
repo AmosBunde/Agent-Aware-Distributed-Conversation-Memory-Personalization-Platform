@@ -31,7 +31,7 @@ def repo() -> InMemoryMemoryRepository:
 @pytest.fixture
 def client(repo) -> httpx.AsyncClient:
     app = create_app(
-        settings=Settings(_env_file=None),
+        settings=Settings(_env_file=None, embedding_dim=FakeEmbedder.dim),
         repository=repo,
         embedder=FakeEmbedder(),
     )

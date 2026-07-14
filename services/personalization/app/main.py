@@ -54,6 +54,12 @@ def create_app(
     async def ingest_signal(user_id: str, signal: PreferenceSignal) -> None:
         await state["signals"].upsert(user_id, signal)
 
+    @app.delete("/api/v1/personalization/{user_id}/signals")
+    async def clear_signals(user_id: str) -> dict:
+        """Right to be forgotten: drop all explicit preference signals."""
+        deleted = await state["signals"].clear(user_id)
+        return {"user_id": user_id, "deleted": deleted}
+
     @app.get("/api/v1/personalization/{user_id}/context-bundle", response_model=ContextBundle)
     async def context_bundle(
         user_id: str,

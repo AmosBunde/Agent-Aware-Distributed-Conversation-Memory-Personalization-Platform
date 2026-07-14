@@ -28,6 +28,8 @@ class MemoryRepository(Protocol):
 
     async def delete(self, user_id: str, memory_id: UUID) -> bool: ...
 
+    async def delete_all(self, user_id: str) -> int: ...
+
 
 class InMemoryMemoryRepository:
     """Dict-backed repository with real cosine search, for tests."""
@@ -81,3 +83,9 @@ class InMemoryMemoryRepository:
             return False
         del self._rows[memory_id]
         return True
+
+    async def delete_all(self, user_id: str) -> int:
+        doomed = [mid for mid, (m, _) in self._rows.items() if m.user_id == user_id]
+        for mid in doomed:
+            del self._rows[mid]
+        return len(doomed)

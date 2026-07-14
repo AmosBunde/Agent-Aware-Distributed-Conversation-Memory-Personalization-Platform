@@ -78,6 +78,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1800}
+      MEMORY_SERVICE_URL: http://memory:8001
     ports:
       - "127.0.0.1:${SESSION_HOST_PORT:-8004}:8004"
     depends_on:
@@ -122,6 +123,7 @@ services:
       PERSONALIZATION_SERVICE_URL: http://personalization:8002
       EMBEDDING_SERVICE_URL: http://embedding:8003
       SESSION_SERVICE_URL: http://session:8004
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
       RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-20}
       RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-40}
       CIRCUIT_FAILURE_THRESHOLD: ${CIRCUIT_FAILURE_THRESHOLD:-5}

@@ -74,3 +74,40 @@ async def test_delete_other_users_memory_is_404(client):
     created = await store(client, "mine")
     resp = await client.delete(f"/api/v1/memories/attacker/{created['id']}")
     assert resp.status_code == 404
+
+
+async def test_wipe_user_deletes_everything_scoped(client):
+    await store(client, "one")
+    await store(client, "two")
+    resp = await client.delete("/api/v1/memories/user-123")
+    assert resp.status_code == 200
+    assert resp.json() == {"user_id": "user-123", "deleted": 2}
+    assert (await client.get("/api/v1/memories/user-123")).json() == []
+    # idempotent: a second wipe deletes nothing
+    assert (await client.delete("/api/v1/memories/user-123")).json()["deleted"] == 0
+
+
+async def test_dimension_mismatch_is_a_loud_502(repo):
+    import httpx
+
+    from services.memory.app.config import Settings
+    from services.memory.app.main import create_app
+    from services.memory.tests.conftest import FakeEmbedder
+
+    # Service expects 384-dim vectors; the fake embedder produces 16.
+    app = create_app(
+        settings=Settings(_env_file=None, embedding_dim=384),
+        repository=repo,
+        embedder=FakeEmbedder(),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/memories",
+            json={"session_id": "s", "role": "user", "content": "hi"},
+            headers=USER,
+        )
+    assert resp.status_code == 502
+    assert "dimension mismatch" in resp.json()["detail"]
+    assert "EMBEDDING_DIM" in resp.json()["detail"]

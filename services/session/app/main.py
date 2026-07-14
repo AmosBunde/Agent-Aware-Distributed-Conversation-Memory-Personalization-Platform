@@ -5,12 +5,17 @@ from convmem_shared.schemas import Session, SessionCreate, SessionUpdate
 from fastapi import FastAPI, HTTPException
 
 from .config import Settings, get_settings
+from .flush import HttpMemoryFlusher, MemoryFlusher
 from .store import SessionStore, state_snapshot
 
 
-def create_app(settings: Settings | None = None, store: SessionStore | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    store: SessionStore | None = None,
+    flusher: MemoryFlusher | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
-    state: dict = {"store": store}
+    state: dict = {"store": store, "flusher": flusher}
 
     async def get_store() -> SessionStore:
         if state["store"] is None:
@@ -22,6 +27,13 @@ def create_app(settings: Settings | None = None, store: SessionStore | None = No
                 redis.from_url(settings.redis_url, decode_responses=True)
             )
         return state["store"]
+
+    def get_flusher() -> MemoryFlusher:
+        if state["flusher"] is None:
+            state["flusher"] = HttpMemoryFlusher(
+                settings.memory_service_url, settings.http_timeout_seconds
+            )
+        return state["flusher"]
 
     app = FastAPI(title="Session Service", version="0.1.0")
 
@@ -61,7 +73,10 @@ def create_app(settings: Settings | None = None, store: SessionStore | None = No
         session = await (await get_store()).end(session_id)
         if session is None:
             raise HTTPException(404, "session not found or expired")
-        return {"ended": True, "final_state": state_snapshot(session)}
+        # Best-effort long-term flush: a memory-service outage must not
+        # prevent the session from ending; the caller sees the outcome.
+        flushed = bool(session.state) and await get_flusher().flush(session)
+        return {"ended": True, "flushed": flushed, "final_state": state_snapshot(session)}
 
     return app
 

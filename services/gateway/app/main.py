@@ -118,6 +118,15 @@ def create_app(
         if upstream is None:
             return JSONResponse({"detail": "unknown route"}, status_code=404)
 
+        if (
+            settings.gateway_api_key
+            and request.headers.get("X-API-Key") != settings.gateway_api_key
+        ):
+            return JSONResponse(
+                {"detail": "missing or invalid API key (X-API-Key header)"},
+                status_code=401,
+            )
+
         user_id = request.headers.get(
             "X-User-ID", request.client.host if request.client else "anonymous"
         )

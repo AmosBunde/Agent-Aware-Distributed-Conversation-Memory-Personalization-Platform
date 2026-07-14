@@ -118,3 +118,32 @@ async def test_console_served_at_root():
         resp = await client.get("/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
+
+
+async def test_api_key_required_when_configured():
+    transports = {
+        name: echo_transport(name) for name in ("memory", "session", "personalization", "embedding")
+    }
+    settings = Settings(_env_file=None, gateway_api_key="s3cret")
+    async with make_client(transports, settings) as client:
+        no_key = await client.get("/api/v1/memories/u1", headers={"X-User-ID": "u1"})
+        wrong = await client.get(
+            "/api/v1/memories/u1", headers={"X-User-ID": "u1", "X-API-Key": "nope"}
+        )
+        right = await client.get(
+            "/api/v1/memories/u1", headers={"X-User-ID": "u1", "X-API-Key": "s3cret"}
+        )
+        console = await client.get("/")  # console itself stays reachable
+    assert no_key.status_code == 401
+    assert wrong.status_code == 401
+    assert right.status_code == 200
+    assert console.status_code == 200
+
+
+async def test_no_api_key_configured_means_open():
+    transports = {
+        name: echo_transport(name) for name in ("memory", "session", "personalization", "embedding")
+    }
+    async with make_client(transports) as client:
+        resp = await client.get("/api/v1/memories/u1", headers={"X-User-ID": "u1"})
+    assert resp.status_code == 200

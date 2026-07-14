@@ -65,3 +65,17 @@ async def test_degrades_gracefully_when_memory_service_down(client, gateway):
 async def test_profile_scoped_to_user(client):
     resp = await client.get("/api/v1/personalization/stranger/profile")
     assert resp.json()["memory_count"] == 0
+
+
+async def test_clear_signals_wipes_only_that_user(client):
+    await client.post("/api/v1/personalization/u1/signal", json={"key": "tone", "value": "concise"})
+    await client.post(
+        "/api/v1/personalization/u2/signal", json={"key": "tone", "value": "detailed"}
+    )
+    resp = await client.delete("/api/v1/personalization/u1/signals")
+    assert resp.status_code == 200
+    assert resp.json() == {"user_id": "u1", "deleted": 1}
+    assert (await client.get("/api/v1/personalization/u1/profile")).json()["preferences"] == {}
+    assert (await client.get("/api/v1/personalization/u2/profile")).json()["preferences"] == {
+        "tone": "detailed"
+    }

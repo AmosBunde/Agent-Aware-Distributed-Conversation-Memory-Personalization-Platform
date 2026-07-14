@@ -126,5 +126,10 @@ class PostgresMemoryRepository:
             )
         return result.endswith("1")
 
+    async def delete_all(self, user_id: str) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM memories WHERE user_id = $1", user_id)
+        return int(result.split()[-1])
+
     async def close(self) -> None:
         await self._pool.close()

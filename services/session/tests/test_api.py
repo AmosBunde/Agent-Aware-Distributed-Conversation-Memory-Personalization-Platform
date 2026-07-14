@@ -1,14 +1,34 @@
 import httpx
 import pytest
+from convmem_shared.schemas import Session
 
 from services.session.app.config import Settings
 from services.session.app.main import create_app
 from services.session.app.store import InMemorySessionStore
 
 
+class FakeFlusher:
+    def __init__(self, healthy: bool = True):
+        self.healthy = healthy
+        self.flushed: list[Session] = []
+
+    async def flush(self, session: Session) -> bool:
+        if not self.healthy:
+            return False
+        self.flushed.append(session)
+        return True
+
+
 @pytest.fixture
-def client() -> httpx.AsyncClient:
-    app = create_app(settings=Settings(_env_file=None), store=InMemorySessionStore())
+def flusher() -> FakeFlusher:
+    return FakeFlusher()
+
+
+@pytest.fixture
+def client(flusher) -> httpx.AsyncClient:
+    app = create_app(
+        settings=Settings(_env_file=None), store=InMemorySessionStore(), flusher=flusher
+    )
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
@@ -52,6 +72,32 @@ async def test_end_session_returns_final_state(client):
     assert body["final_state"]["state"] == {"topic": "python"}
     # gone afterwards
     assert (await client.get(f"/api/v1/sessions/{created['session_id']}")).status_code == 404
+
+
+async def test_end_session_flushes_state_to_memory(client, flusher):
+    created = await create_session(client, topic="python")
+    body = (await client.delete(f"/api/v1/sessions/{created['session_id']}")).json()
+    assert body["flushed"] is True
+    [flushed] = flusher.flushed
+    assert flushed.user_id == "u1"
+    assert flushed.state == {"topic": "python"}
+
+
+async def test_empty_session_is_not_flushed(client, flusher):
+    created = await create_session(client)  # no state
+    body = (await client.delete(f"/api/v1/sessions/{created['session_id']}")).json()
+    assert body["flushed"] is False
+    assert flusher.flushed == []
+
+
+async def test_memory_outage_does_not_block_session_end(client, flusher):
+    flusher.healthy = False
+    created = await create_session(client, topic="python")
+    resp = await client.delete(f"/api/v1/sessions/{created['session_id']}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ended"] is True
+    assert body["flushed"] is False
 
 
 async def test_unknown_session_is_404(client):
