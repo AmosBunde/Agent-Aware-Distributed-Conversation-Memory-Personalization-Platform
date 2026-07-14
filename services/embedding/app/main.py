@@ -12,6 +12,7 @@ backend = build_backend(
     settings.embedding_dim,
     api_key=settings.openai_api_key,
     model=settings.openai_model,
+    st_model=settings.st_model,
 )
 
 app = FastAPI(title="Embedding Service", version="0.1.0")

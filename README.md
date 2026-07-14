@@ -162,7 +162,7 @@ Everything is environment-driven (see `.env.example`, which works as-is):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `EMBEDDING_BACKEND` | `local` | `local` (deterministic, zero keys) or `openai` |
+| `EMBEDDING_BACKEND` | `local` | `local` (deterministic, zero keys), `openai`, or `sentence-transformers` (semantic, zero keys; heavy deps — build with `--build-arg INSTALL_ST=true`) |
 | `GATEWAY_API_KEY` | _empty_ | When set, every API request must send it as `X-API-Key` (the console has a key field) |
 | `JWT_SECRET` / `JWT_JWKS_URL` | _empty_ | Per-user auth: require `Authorization: Bearer`; the token's `sub` claim becomes the user id upstream (overrides any client-sent `X-User-ID`). HS256 secret or OIDC JWKS. Optional `JWT_ISSUER`/`JWT_AUDIENCE` checks |
 | `OPENAI_API_KEY` | _empty_ | Only needed for the OpenAI backend |
@@ -250,7 +250,6 @@ Numbered SQL files in `scripts/migrations/` are the single source of truth for t
 Deliberately not in this codebase yet — each lands with tests when it lands:
 
 - Terraform environments for GCP/Azure (AWS reference environment ships in `infrastructure/terraform/environments/aws`)
-- Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
 
 ## Development workflow
 
