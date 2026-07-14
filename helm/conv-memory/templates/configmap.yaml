@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "conv-memory.fullname" . }}-config
+  labels:
+    {{- include "conv-memory.labels" . | nindent 4 }}
+data:
+  MEMORY_SERVICE_URL: "http://{{ include "conv-memory.fullname" . }}-memory:8001"
+  PERSONALIZATION_SERVICE_URL: "http://{{ include "conv-memory.fullname" . }}-personalization:8002"
+  EMBEDDING_SERVICE_URL: "http://{{ include "conv-memory.fullname" . }}-embedding:8003"
+  SESSION_SERVICE_URL: "http://{{ include "conv-memory.fullname" . }}-session:8004"
+  POSTGRES_HOST: {{ required "postgres.host is required (managed Postgres with pgvector)" .Values.postgres.host | quote }}
+  POSTGRES_PORT: {{ .Values.postgres.port | quote }}
+  POSTGRES_DB: {{ .Values.postgres.db | quote }}
+  POSTGRES_USER: {{ .Values.postgres.user | quote }}
+  REDIS_URL: {{ required "redis.url is required (managed Redis)" .Values.redis.url | quote }}
+  EMBEDDING_BACKEND: {{ .Values.embedding.backend | quote }}
+  EMBEDDING_DIM: {{ .Values.embedding.dim | quote }}
+  EVENT_BUS: {{ .Values.eventBus | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafkaBootstrapServers | quote }}
+  JWT_JWKS_URL: {{ .Values.auth.jwtJwksUrl | quote }}
+  JWT_ISSUER: {{ .Values.auth.jwtIssuer | quote }}
+  JWT_AUDIENCE: {{ .Values.auth.jwtAudience | quote }}
+  {{- range $key, $value := .Values.extraEnv }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

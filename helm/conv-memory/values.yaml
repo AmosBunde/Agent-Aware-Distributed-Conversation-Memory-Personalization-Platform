@@ -1,0 +1,70 @@
+# Images are named <repository>-<service>:<tag>, matching the five
+# Dockerfiles in services/ (build and push one image per service).
+image:
+  repository: ghcr.io/example/conv-memory
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# One entry per microservice; deployments/services are generated from this
+# map. `public: true` marks the only service the Ingress may expose.
+services:
+  gateway:
+    port: 8000
+    public: true
+  memory:
+    port: 8001
+  personalization:
+    port: 8002
+  embedding:
+    port: 8003
+  session:
+    port: 8004
+
+# The chart does NOT run data stores. Point these at managed services
+# (RDS/Cloud SQL with pgvector, ElastiCache/Memorystore).
+postgres:
+  host: ""      # REQUIRED
+  port: 5432
+  db: convmem
+  user: convmem
+  password: ""  # REQUIRED (rendered into the chart Secret)
+
+redis:
+  url: ""       # REQUIRED, e.g. redis://my-redis.cache.amazonaws.com:6379/0
+
+# Platform behaviour
+embedding:
+  backend: local          # local | openai | sentence-transformers
+  dim: 384
+eventBus: redis           # redis | kafka | none
+kafkaBootstrapServers: ""
+
+# Gateway auth (empty = open; set for anything internet-facing)
+auth:
+  gatewayApiKey: ""
+  jwtSecret: ""
+  jwtJwksUrl: ""
+  jwtIssuer: ""
+  jwtAudience: ""
+
+openaiApiKey: ""
+
+# Extra environment variables applied to every service
+extraEnv: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  host: convmem.example.com
+  tls: []
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
