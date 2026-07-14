@@ -19,15 +19,32 @@ class FakeFlusher:
         return True
 
 
+class RecordingPublisher:
+    def __init__(self):
+        self.events: list[tuple[str, dict]] = []
+
+    async def publish(self, topic: str, payload: dict) -> bool:
+        self.events.append((topic, payload))
+        return True
+
+
 @pytest.fixture
 def flusher() -> FakeFlusher:
     return FakeFlusher()
 
 
 @pytest.fixture
-def client(flusher) -> httpx.AsyncClient:
+def publisher() -> RecordingPublisher:
+    return RecordingPublisher()
+
+
+@pytest.fixture
+def client(flusher, publisher) -> httpx.AsyncClient:
     app = create_app(
-        settings=Settings(_env_file=None), store=InMemorySessionStore(), flusher=flusher
+        settings=Settings(_env_file=None),
+        store=InMemorySessionStore(),
+        flusher=flusher,
+        publisher=publisher,
     )
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
@@ -103,3 +120,15 @@ async def test_memory_outage_does_not_block_session_end(client, flusher):
 async def test_unknown_session_is_404(client):
     assert (await client.get("/api/v1/sessions/nope")).status_code == 404
     assert (await client.delete("/api/v1/sessions/nope")).status_code == 404
+
+
+async def test_end_session_publishes_event(client, publisher):
+    created = await create_session(client, topic="python")
+    await client.delete(f"/api/v1/sessions/{created['session_id']}")
+    [(topic, payload)] = publisher.events
+    assert topic == "session.ended"
+    assert payload == {
+        "session_id": created["session_id"],
+        "user_id": "u1",
+        "flushed": True,
+    }

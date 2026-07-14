@@ -23,16 +23,31 @@ class FakeEmbedder:
         return [v / norm for v in vec]
 
 
+class RecordingPublisher:
+    def __init__(self):
+        self.events: list[tuple[str, dict]] = []
+
+    async def publish(self, topic: str, payload: dict) -> bool:
+        self.events.append((topic, payload))
+        return True
+
+
 @pytest.fixture
 def repo() -> InMemoryMemoryRepository:
     return InMemoryMemoryRepository()
 
 
 @pytest.fixture
-def client(repo) -> httpx.AsyncClient:
+def publisher() -> RecordingPublisher:
+    return RecordingPublisher()
+
+
+@pytest.fixture
+def client(repo, publisher) -> httpx.AsyncClient:
     app = create_app(
         settings=Settings(_env_file=None, embedding_dim=FakeEmbedder.dim),
         repository=repo,
         embedder=FakeEmbedder(),
+        publisher=publisher,
     )
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")

@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from convmem_shared.events import EventPublisher, RedisEventPublisher
 from convmem_shared.health import health_router
 from convmem_shared.schemas import Session, SessionCreate, SessionUpdate
 from fastapi import FastAPI, HTTPException
@@ -13,9 +14,10 @@ def create_app(
     settings: Settings | None = None,
     store: SessionStore | None = None,
     flusher: MemoryFlusher | None = None,
+    publisher: EventPublisher | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
-    state: dict = {"store": store, "flusher": flusher}
+    state: dict = {"store": store, "flusher": flusher, "publisher": publisher}
 
     async def get_store() -> SessionStore:
         if state["store"] is None:
@@ -34,6 +36,13 @@ def create_app(
                 settings.memory_service_url, settings.http_timeout_seconds
             )
         return state["flusher"]
+
+    def get_publisher() -> EventPublisher:
+        if state["publisher"] is None:
+            import redis.asyncio as redis
+
+            state["publisher"] = RedisEventPublisher(redis.from_url(settings.redis_url))
+        return state["publisher"]
 
     app = FastAPI(title="Session Service", version="0.1.0")
 
@@ -76,6 +85,10 @@ def create_app(
         # Best-effort long-term flush: a memory-service outage must not
         # prevent the session from ending; the caller sees the outcome.
         flushed = bool(session.state) and await get_flusher().flush(session)
+        await get_publisher().publish(
+            "session.ended",
+            {"session_id": session.session_id, "user_id": session.user_id, "flushed": flushed},
+        )
         return {"ended": True, "flushed": flushed, "final_state": state_snapshot(session)}
 
     return app
