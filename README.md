@@ -208,8 +208,14 @@ ssh your-vm 'git clone <repo> && cd <repo> && ./scripts/quickstart.sh'
 
 Then put a TLS reverse proxy (Caddy or nginx) in front of port 8000 — it's the only port you expose; databases and internal services stay on the compose network, and host-published dev ports bind to loopback only. Set a real `POSTGRES_PASSWORD` and a `GATEWAY_API_KEY` in `.env`.
 
-### 3. Kubernetes / managed cloud
-The services are stateless 12-factor containers (config via env, health endpoints, one process per container), so they map directly onto any k8s platform: build the five Dockerfiles, point the `*_SERVICE_URL` env vars at cluster DNS, and use managed Postgres (with pgvector) + Redis. Helm charts and Terraform modules are tracked as future work in the issues.
+### 3. Kubernetes (Helm)
+A chart ships in `helm/conv-memory`: 5 deployments/services generated from a values map, readiness/liveness probes on `/healthz`, Prometheus scrape annotations, ConfigMap wiring, Secret for credentials, optional Ingress that exposes **only** the gateway. Data stores are expected as managed services (RDS/Cloud SQL with pgvector, ElastiCache/Memorystore):
+
+```bash
+helm install convmem ./helm/conv-memory \
+  --set image.repository=YOUR_REGISTRY/conv-memory --set image.tag=$(git rev-parse --short HEAD) \
+  --set postgres.host=... --set postgres.password=... --set redis.url=...
+```
 
 ---
 
@@ -243,7 +249,7 @@ Numbered SQL files in `scripts/migrations/` are the single source of truth for t
 
 Deliberately not in this codebase yet — each lands with tests when it lands:
 
-- Helm chart and Terraform modules for AWS/GCP/Azure
+- Terraform modules for AWS/GCP/Azure
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
 
 ## Development workflow
