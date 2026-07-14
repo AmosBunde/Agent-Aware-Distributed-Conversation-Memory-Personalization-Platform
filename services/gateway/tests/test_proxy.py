@@ -147,3 +147,73 @@ async def test_no_api_key_configured_means_open():
     async with make_client(transports) as client:
         resp = await client.get("/api/v1/memories/u1", headers={"X-User-ID": "u1"})
     assert resp.status_code == 200
+
+
+def mint(secret="jwt-secret", sub="alice", exp_offset=3600, **extra):
+    import time as _time
+
+    import jwt as _jwt
+
+    claims = {"sub": sub, "exp": int(_time.time()) + exp_offset, **extra}
+    return _jwt.encode(claims, secret, algorithm="HS256")
+
+
+def jwt_client(**settings_kwargs):
+    transports = {
+        name: echo_transport(name) for name in ("memory", "session", "personalization", "embedding")
+    }
+    settings = Settings(_env_file=None, jwt_secret="jwt-secret", **settings_kwargs)
+    return make_client(transports, settings)
+
+
+async def test_jwt_subject_overrides_client_asserted_user():
+    async with jwt_client() as client:
+        resp = await client.get(
+            "/api/v1/memories/alice",
+            headers={
+                "Authorization": f"Bearer {mint(sub='alice')}",
+                "X-User-ID": "victim",  # spoof attempt must be ignored
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json()["user"] == "alice"
+
+
+async def test_jwt_missing_token_is_401():
+    async with jwt_client() as client:
+        resp = await client.get("/api/v1/memories/alice", headers={"X-User-ID": "alice"})
+    assert resp.status_code == 401
+    assert "bearer" in resp.json()["detail"].lower()
+
+
+async def test_jwt_expired_token_is_401():
+    async with jwt_client() as client:
+        resp = await client.get(
+            "/api/v1/memories/alice",
+            headers={"Authorization": f"Bearer {mint(exp_offset=-60)}"},
+        )
+    assert resp.status_code == 401
+    assert "invalid token" in resp.json()["detail"]
+
+
+async def test_jwt_wrong_signature_is_401():
+    async with jwt_client() as client:
+        resp = await client.get(
+            "/api/v1/memories/alice",
+            headers={"Authorization": f"Bearer {mint(secret='forged')}"},
+        )
+    assert resp.status_code == 401
+
+
+async def test_jwt_wrong_issuer_is_401():
+    async with jwt_client(jwt_issuer="https://idp.example.com") as client:
+        good = await client.get(
+            "/api/v1/memories/alice",
+            headers={"Authorization": f"Bearer {mint(iss='https://idp.example.com')}"},
+        )
+        bad = await client.get(
+            "/api/v1/memories/alice",
+            headers={"Authorization": f"Bearer {mint(iss='https://evil.example.com')}"},
+        )
+    assert good.status_code == 200
+    assert bad.status_code == 401

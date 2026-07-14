@@ -326,7 +326,10 @@ async function api(method, path, body) {
     "X-User-ID": $("user").value.trim() || "anonymous",
   };
   const key = $("apikey").value.trim();
-  if (key) headers["X-API-Key"] = key;
+  if (key) {
+    headers["X-API-Key"] = key;          // API-key mode
+    headers["Authorization"] = "Bearer " + key;  // JWT mode
+  }
   const resp = await fetch(path, {
     method,
     headers,

@@ -12,6 +12,13 @@ class Settings(BaseServiceSettings):
     # for local development.
     gateway_api_key: str = ""
 
+    # Opt-in per-user JWT auth: setting either enables Bearer enforcement.
+    # The token's `sub` claim becomes X-User-ID upstream (unspoofable).
+    jwt_secret: str = ""  # HS256 shared secret
+    jwt_jwks_url: str = ""  # OIDC provider JWKS endpoint (RS256/ES256)
+    jwt_issuer: str = ""  # optional `iss` check
+    jwt_audience: str = ""  # optional `aud` check
+
     rate_limit_rps: float = 20.0
     rate_limit_burst: int = 40
 
