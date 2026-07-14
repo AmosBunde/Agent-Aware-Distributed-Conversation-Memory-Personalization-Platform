@@ -115,6 +115,7 @@ All endpoints are served through the gateway on port 8000. Write operations take
 | `GET` | `/api/v1/memories/{user_id}/context?query=&top_k=` | Semantic search with similarity/recency/score breakdown |
 | `PATCH` | `/api/v1/memories/{user_id}/{memory_id}` | Merge metadata into a memory |
 | `DELETE` | `/api/v1/memories/{user_id}/{memory_id}` | Delete a memory |
+| `DELETE` | `/api/v1/memories/{user_id}` | **Wipe every memory for a user** (right to be forgotten) |
 
 ### Personalization
 
@@ -123,6 +124,7 @@ All endpoints are served through the gateway on port 8000. Write operations take
 | `GET` | `/api/v1/personalization/{user_id}/profile` | Preferences, top intents, activity stats |
 | `POST` | `/api/v1/personalization/{user_id}/signal` | Upsert an explicit preference (`{"key":"tone","value":"concise"}`) |
 | `GET` | `/api/v1/personalization/{user_id}/context-bundle?query=` | Profile + top-K relevant memories in one payload |
+| `DELETE` | `/api/v1/personalization/{user_id}/signals` | Clear all explicit preference signals for a user |
 
 ### Sessions
 
@@ -131,7 +133,7 @@ All endpoints are served through the gateway on port 8000. Write operations take
 | `POST` | `/api/v1/sessions` | Create a session (default TTL 30 min) |
 | `GET` | `/api/v1/sessions/{session_id}` | Get session state; refreshes the TTL |
 | `PATCH` | `/api/v1/sessions/{session_id}` | Merge state keys |
-| `DELETE` | `/api/v1/sessions/{session_id}` | End session; returns final state for long-term flush |
+| `DELETE` | `/api/v1/sessions/{session_id}` | End session; flushes final state to long-term memory (best-effort, reported as `flushed`) |
 
 ### Embeddings & health
 
@@ -161,6 +163,7 @@ Everything is environment-driven (see `.env.example`, which works as-is):
 | Variable | Default | Purpose |
 |---|---|---|
 | `EMBEDDING_BACKEND` | `local` | `local` (deterministic, zero keys) or `openai` |
+| `GATEWAY_API_KEY` | _empty_ | When set, every API request must send it as `X-API-Key` (the console has a key field) |
 | `OPENAI_API_KEY` | _empty_ | Only needed for the OpenAI backend |
 | `SESSION_TTL_SECONDS` | `1800` | Session lifetime; reads slide the window |
 | `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST` | `20` / `40` | Per-user gateway rate limit |
@@ -202,7 +205,7 @@ The same compose file runs unchanged on any VM with Docker (EC2, Droplet, Comput
 ssh your-vm 'git clone <repo> && cd <repo> && ./scripts/quickstart.sh'
 ```
 
-Then put a TLS reverse proxy (Caddy or nginx) in front of port 8000 — it's the only port you expose; databases and internal services stay on the compose network, and host-published dev ports bind to loopback only. Set a real `POSTGRES_PASSWORD` in `.env`.
+Then put a TLS reverse proxy (Caddy or nginx) in front of port 8000 — it's the only port you expose; databases and internal services stay on the compose network, and host-published dev ports bind to loopback only. Set a real `POSTGRES_PASSWORD` and a `GATEWAY_API_KEY` in `.env`.
 
 ### 3. Kubernetes / managed cloud
 The services are stateless 12-factor containers (config via env, health endpoints, one process per container), so they map directly onto any k8s platform: build the five Dockerfiles, point the `*_SERVICE_URL` env vars at cluster DNS, and use managed Postgres (with pgvector) + Redis. Helm charts and Terraform modules are tracked as future work in the issues.
@@ -217,7 +220,7 @@ Deliberately not in this codebase yet — each lands with tests when it lands:
 - Prometheus metrics + OpenTelemetry tracing + Grafana dashboards
 - Helm chart and Terraform modules for AWS/GCP/Azure
 - Sentence-transformers embedding backend (the `EmbeddingBackend` protocol is ready for it)
-- Authentication in front of the gateway
+- Per-user authentication (OIDC / signed tokens) — a shared `GATEWAY_API_KEY` gate ships today
 
 ## Development workflow
 

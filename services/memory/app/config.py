@@ -13,6 +13,10 @@ class Settings(BaseServiceSettings):
     postgres_user: str = "convmem"
     postgres_password: str = "convmem-dev-password"
 
+    # Must match the vector(N) column in scripts/initdb.sql and the
+    # embedding service's EMBEDDING_DIM.
+    embedding_dim: int = 384
+
     # Ranking weights: score = w_similarity * cosine + w_recency * exp(-age/half_life)
     rank_weight_similarity: float = 0.75
     rank_weight_recency: float = 0.25

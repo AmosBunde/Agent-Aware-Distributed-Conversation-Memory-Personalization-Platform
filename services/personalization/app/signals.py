@@ -11,6 +11,8 @@ class SignalStore(Protocol):
 
     async def list_for_user(self, user_id: str) -> list[PreferenceSignal]: ...
 
+    async def clear(self, user_id: str) -> int: ...
+
 
 class PostgresSignalStore:
     def __init__(self, pool: asyncpg.Pool):
@@ -50,6 +52,13 @@ class PostgresSignalStore:
             )
         return [PreferenceSignal(**dict(r)) for r in rows]
 
+    async def clear(self, user_id: str) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM preference_signals WHERE user_id = $1", user_id
+            )
+        return int(result.split()[-1])
+
     async def close(self) -> None:
         await self._pool.close()
 
@@ -63,3 +72,9 @@ class InMemorySignalStore:
 
     async def list_for_user(self, user_id: str) -> list[PreferenceSignal]:
         return [s for (uid, _), s in self._rows.items() if uid == user_id]
+
+    async def clear(self, user_id: str) -> int:
+        doomed = [key for key in self._rows if key[0] == user_id]
+        for key in doomed:
+            del self._rows[key]
+        return len(doomed)

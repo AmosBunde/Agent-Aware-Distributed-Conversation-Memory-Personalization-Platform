@@ -65,3 +65,35 @@ def test_session_lifecycle(session, user_id):
     assert session.patch(f"/api/v1/sessions/{sid}", json={"state": {"turns": 1}}).status_code == 200
     ended = session.delete(f"/api/v1/sessions/{sid}").json()
     assert ended["final_state"]["state"] == {"topic": "it", "turns": 1}
+
+
+def test_session_end_flushes_to_long_term_memory(session, memory, user_id):
+    created = session.post(
+        "/api/v1/sessions", json={"user_id": user_id, "state": {"topic": "flush-check"}}
+    ).json()
+    ended = session.delete(f"/api/v1/sessions/{created['session_id']}").json()
+    assert ended["flushed"] is True
+
+    memories = memory.get(f"/api/v1/memories/{user_id}").json()
+    summaries = [m for m in memories if m["metadata"].get("intent") == "session_summary"]
+    assert len(summaries) == 1
+    assert "flush-check" in summaries[0]["content"]
+    assert summaries[0]["session_id"] == created["session_id"]
+
+
+def test_user_wipe_removes_memories_and_signals(memory, personalization, user_id):
+    memory.post(
+        "/api/v1/memories",
+        json={"session_id": "it-sess", "role": "user", "content": "forget me"},
+        headers={"X-User-ID": user_id},
+    )
+    personalization.post(
+        f"/api/v1/personalization/{user_id}/signal", json={"key": "tone", "value": "concise"}
+    )
+    assert memory.delete(f"/api/v1/memories/{user_id}").json()["deleted"] >= 1
+    assert (
+        personalization.delete(f"/api/v1/personalization/{user_id}/signals").json()["deleted"] == 1
+    )
+    assert memory.get(f"/api/v1/memories/{user_id}").json() == []
+    profile = personalization.get(f"/api/v1/personalization/{user_id}/profile").json()
+    assert profile["memory_count"] == 0 and profile["preferences"] == {}
