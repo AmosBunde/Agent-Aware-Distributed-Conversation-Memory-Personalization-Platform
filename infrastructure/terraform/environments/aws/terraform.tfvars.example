@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and adjust. Set the DB password via env instead:
+#   export TF_VAR_db_password='a-strong-password'
+
+name   = "conv-memory"
+region = "us-east-1"
+
+eks_instance_types = ["m5.large"]
+eks_desired_nodes  = 3
+eks_max_nodes      = 10
+
+db_instance_class = "db.r6g.large"
+redis_node_type   = "cache.r6g.large"
